@@ -1,0 +1,17 @@
+# Qt 构建
+build*/
+*.pro.user*
+.qtcreator/
+
+# 本地配置（WiFi 账号等）
+esp32cam/**/secrets.h
+
+# STM32 编译产物
+stm32/**/MDK-ARM/*/
+stm32/**/Debug/
+stm32/**/Release/
+
+# 数据与临时文件
+data/
+tmp/
+*.csv
