@@ -1,0 +1,36 @@
+{
+  "board": "ESP32-S3 + GC2145",
+  "image_info_chip": "ESP32-S3",
+  "image_info_idf": "v5.5.5",
+  "baseline_directory": "D:\\esp32\\build-out\\optimize-20261106\\quality40\\out",
+  "network_mode": "STA",
+  "protocol": "HTTP MJPEG",
+  "width": 320,
+  "height": 240,
+  "historical_record": "tmp/esp32-optimize-20261106/quality40-warm/result.json",
+  "historical_received_frames": 879,
+  "historical_duration_s": 60,
+  "strict_20fps_passed": false,
+  "new_hardware_test_performed": false,
+  "files": {
+    "boot_app0.bin": {
+      "bytes": 8192,
+      "sha256": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0"
+    },
+    "displacement_cam.ino.bin": {
+      "bytes": 1007312,
+      "sha256": "767811705adf2925a0e6592812cef97b3a6819ce4004778eed54ce25db268509"
+    },
+    "displacement_cam.ino.bootloader.bin": {
+      "bytes": 19968,
+      "sha256": "883bb1e4765f12902e56b4bb901d0504df2ea2396bba8d79a7b29ae87d4b3658"
+    },
+    "displacement_cam.ino.partitions.bin": {
+      "bytes": 3072,
+      "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"
+    }
+  },
+  "staged_ssid": "DH4504",
+  "historical_binary_identity_verified": false,
+  "identity_correction": "The folder was reused by yuv-bgn compilation. Historical flash log app length 983216 differs from retained BIN length 1007312. Rebuild retained RGB source separately."
+}

@@ -1,0 +1,172 @@
+{
+    "criteria": {
+        "max_gap_ms": 150,
+        "min_fps_each_second": 20,
+        "required_height": 240,
+        "required_width": 320,
+        "warmup_s": 2
+    },
+    "decoded": {
+        "first_ms": -1,
+        "frames": 0,
+        "max_gap_ms_after_warmup": 23000,
+        "min_fps_after_warmup": 0,
+        "per_second": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ]
+    },
+    "decoded_times_ms": [
+    ],
+    "duration_s": 25,
+    "height": 0,
+    "painted": {
+        "first_ms": -1,
+        "frames": 0,
+        "max_gap_ms_after_warmup": 23000,
+        "min_fps_after_warmup": 0,
+        "per_second": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+        ]
+    },
+    "painted_times_ms": [
+    ],
+    "passed": false,
+    "states": [
+        {
+            "detail": "udp://192.168.110.96:5006",
+            "ms": 120,
+            "state": 1
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 1618,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 3119,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 4618,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 6118,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 7618,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 9118,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 10617,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 12118,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 13617,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 15118,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 16618,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 18117,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 19618,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 21118,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 22618,
+            "state": 3
+        },
+        {
+            "detail": "视频中断，正在恢复…",
+            "ms": 24118,
+            "state": 3
+        }
+    ],
+    "url": "udp://192.168.110.96:5006",
+    "width": 0,
+    "wrong_resolution_observed": false
+}

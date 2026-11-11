@@ -1,0 +1,49 @@
+{
+  "camera_port": "COM5",
+  "firmware_changed": false,
+  "tests": [
+    {
+      "protocol": "udp",
+      "url": "udp://192.168.110.96:5006",
+      "exit": 1,
+      "painted": {
+        "first_ms": -1,
+        "frames": 0,
+        "max_gap_ms_after_warmup": 23000,
+        "min_fps_after_warmup": 0,
+        "per_second": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "decoded_count": 0,
+      "passed": false
+    }
+  ],
+  "s3_condition": "COM6 absent",
+  "ip": "192.168.110.96",
+  "boot_count": 0
+}

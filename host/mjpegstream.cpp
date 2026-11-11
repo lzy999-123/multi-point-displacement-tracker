@@ -3,6 +3,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QNetworkProxy>
 
 #include <opencv2/imgcodecs.hpp>
 
@@ -14,6 +15,8 @@ constexpr int kNoFrameTimeoutMs = 3000;
 MjpegStream::MjpegStream(QObject *parent)
     : QObject(parent), m_nam(new QNetworkAccessManager(this))
 {
+    // 相机走局域网直连，避免系统代理转发本地视频。
+    m_nam->setProxy(QNetworkProxy::NoProxy);
     qRegisterMetaType<cv::Mat>();
     m_clock.start();
     m_reconnectTimer.setSingleShot(true);

@@ -1,0 +1,11 @@
+{
+  "source_directory": "D:\\esp32\\build-out\\s3-channel2-20261111\\sketch\\displacement_cam",
+  "snapshot": "D:\\esp32\\build-out\\dual-lab-s3-id2-20261111",
+  "app_sha256": "4f3211dfd178101e6465665cbe35efa7199df6e39bce5fb9bc5febfd10286f1e",
+  "app_bytes": 1008560,
+  "source_sha256": {
+    "displacement_cam.ino": "2c85a9948df2bde8a538ddfcd1da1a27877ec4332926803fbd4c475e707e2d35",
+    "config.h": "e7b36ffcf7e36fb58a89fe3af505da616436790d7e5b4dbdda6d5bbc717e539e",
+    "camera_pins.h": "f30894a23d8fc8f6ed25b08ae5fa9e3e7b4f147048ea2afd2b21198efed72339"
+  }
+}

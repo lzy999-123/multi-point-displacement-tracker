@@ -10,6 +10,7 @@
 
 #include "colorblobdetector.h"
 #include "mjpegstream.h"
+#include "udpstream.h"
 
 // 一路处理结果，从工作线程发到界面线程。
 struct ChannelResult {
@@ -47,7 +48,8 @@ signals:
 private:
     void onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs);
 
-    MjpegStream *m_stream = nullptr;
+    MjpegStream *m_mjpegStream = nullptr;
+    UdpStream *m_udpStream = nullptr;
     ColorBlobDetector m_detector;
     std::shared_ptr<std::atomic<int>> m_pending;
     cv::Mat m_lastFrame;

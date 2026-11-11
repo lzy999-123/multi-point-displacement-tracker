@@ -1,0 +1,26 @@
+[
+  {
+    "name": "baseline-4x",
+    "exit_code": 1,
+    "frames": 0,
+    "minimum_fps": 0,
+    "max_gap_ms": 13000.0,
+    "passed": false
+  },
+  {
+    "name": "drive-1x",
+    "exit_code": 1,
+    "frames": 1,
+    "minimum_fps": 0,
+    "max_gap_ms": 10537.42,
+    "passed": false
+  },
+  {
+    "name": "drive-1x-gated-pclk",
+    "exit_code": 1,
+    "frames": 0,
+    "minimum_fps": 0,
+    "max_gap_ms": 13000.0,
+    "passed": false
+  }
+]

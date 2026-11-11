@@ -1,0 +1,97 @@
+[probe] ip=192.168.110.96 mac=7C:D5:44:33:39:9C rssi=-51 sdk=v5.5.5
+[probe] command=2 power=59 state=3 ip=192.168.110.96
+[probe] camera-init=0 heap=173692 xclk=20000000 dram=0
+[probe] command=c power=59 state=3 ip=192.168.110.96
+[path] gateway host=192.168.110.1 camera=1 tcp=1 connect_ms=19
+[path] gateway reply_bytes=235 head_bytes=128 wait_ms=16 head=HTTP/1.0 200 OK
+Content-Type: text/html
+Accept-Ranges: bytes
+ETag: "3276582069"
+Last-Modified: Fri, 01 Jan 2021 16:31:30 GMT
+[path] external-http host=example.com camera=1 tcp=0 connect_ms=2682
+[probe] command=t power=59 state=3 ip=192.168.110.96
+[probe] rx=1 from=192.168.110.163:62928 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=2 from=192.168.110.163:62928 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=3 from=192.168.110.163:62928 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=4 from=192.168.110.163:62928 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=5 from=192.168.110.163:62928 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=6 from=192.168.110.163:62928 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=7 from=192.168.110.163:62928 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=8 from=192.168.110.163:62928 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=9 from=192.168.110.163:62928 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=10 from=192.168.110.163:62928 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=11 from=192.168.110.163:62928 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=12 from=192.168.110.163:62928 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=13 from=192.168.110.163:62928 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=14 from=192.168.110.163:62928 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=15 from=192.168.110.163:62928 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[clock] paused=1 result=0
+[probe] command=o power=59 state=3 ip=192.168.110.96
+[path] gateway host=192.168.110.1 camera=1 tcp=1 connect_ms=105
+[path] gateway reply_bytes=235 head_bytes=128 wait_ms=21 head=HTTP/1.0 200 OK
+Content-Type: text/html
+Accept-Ranges: bytes
+ETag: "3276582069"
+Last-Modified: Fri, 01 Jan 2021 16:31:30 GMT
+[path] external-http host=example.com camera=1 tcp=0 connect_ms=2502
+[probe] command=t power=59 state=3 ip=192.168.110.96
+[probe] rx=16 from=192.168.110.163:60340 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=17 from=192.168.110.163:60340 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=18 from=192.168.110.163:60340 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=19 from=192.168.110.163:60340 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=20 from=192.168.110.163:60340 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=21 from=192.168.110.163:60340 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=22 from=192.168.110.163:60340 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=23 from=192.168.110.163:60340 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=24 from=192.168.110.163:60340 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=25 from=192.168.110.163:60340 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=26 from=192.168.110.163:60340 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=27 from=192.168.110.163:60340 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=28 from=192.168.110.163:60340 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=29 from=192.168.110.163:60340 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=30 from=192.168.110.163:60340 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[clock] paused=0 result=0
+[probe] command=v power=59 state=3 ip=192.168.110.96
+[path] gateway host=192.168.110.1 camera=1 tcp=1 connect_ms=237
+[path] gateway reply_bytes=0 head_bytes=0 wait_ms=2500 head=
+[path] external-http host=example.com camera=1 tcp=0 connect_ms=2502
+[probe] command=t power=59 state=3 ip=192.168.110.96
+[probe] rx=31 from=192.168.110.163:50297 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=32 from=192.168.110.163:50297 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=33 from=192.168.110.163:50297 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=34 from=192.168.110.163:50297 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=35 from=192.168.110.163:50297 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=36 from=192.168.110.163:50297 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=37 from=192.168.110.163:50297 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=38 from=192.168.110.163:50297 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=39 from=192.168.110.163:50297 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=40 from=192.168.110.163:50297 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=41 from=192.168.110.163:50297 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=42 from=192.168.110.163:50297 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=43 from=192.168.110.163:50297 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=44 from=192.168.110.163:50297 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=45 from=192.168.110.163:50297 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] command=x power=59 state=3 ip=192.168.110.96
+[path] gateway host=192.168.110.1 camera=0 tcp=1 connect_ms=484
+[path] gateway reply_bytes=235 head_bytes=128 wait_ms=35 head=HTTP/1.0 200 OK
+Content-Type: text/html
+Accept-Ranges: bytes
+ETag: "3276582069"
+Last-Modified: Fri, 01 Jan 2021 16:31:30 GMT
+[path] external-http host=example.com camera=0 tcp=0 connect_ms=2503
+[probe] command=t power=59 state=3 ip=192.168.110.96
+[probe] rx=46 from=192.168.110.163:61590 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=47 from=192.168.110.163:61590 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=48 from=192.168.110.163:61590 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=49 from=192.168.110.163:61590 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=50 from=192.168.110.163:61590 bytes=4 broadcast=0 begin=1 written=4 sent=1
+[probe] rx=51 from=192.168.110.163:61590 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=52 from=192.168.110.163:61590 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=53 from=192.168.110.163:61590 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=54 from=192.168.110.163:61590 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=55 from=192.168.110.163:61590 bytes=512 broadcast=0 begin=1 written=512 sent=1
+[probe] rx=56 from=192.168.110.163:61590 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=57 from=192.168.110.163:61590 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=58 from=192.168.110.163:61590 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=59 from=192.168.110.163:61590 bytes=1400 broadcast=0 begin=1 written=1400 sent=1
+[probe] rx=60 from=192.168.110.163:61590 bytes=1400 broadcast=0 begin=1 written=1400 sent=1

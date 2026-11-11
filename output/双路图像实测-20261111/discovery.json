@@ -1,0 +1,66 @@
+[
+  {
+    "address": [
+      "10.166.101.157",
+      39093
+    ],
+    "payload": {
+      "type": "announce",
+      "version": 1,
+      "nonce": "dual1111",
+      "id": 1,
+      "ip": "10.166.101.157",
+      "stream": "http://10.166.101.157:81/stream",
+      "udp_stream": 5006,
+      "control_port": 5005
+    }
+  },
+  {
+    "address": [
+      "10.166.101.145",
+      39093
+    ],
+    "payload": {
+      "type": "announce",
+      "version": 1,
+      "nonce": "dual1111",
+      "id": 2,
+      "ip": "10.166.101.145",
+      "stream": "http://10.166.101.145:81/stream",
+      "udp_stream": 5006,
+      "control_port": 5005
+    }
+  },
+  {
+    "address": [
+      "10.166.101.145",
+      39093
+    ],
+    "payload": {
+      "type": "announce",
+      "version": 1,
+      "nonce": "dual1111",
+      "id": 2,
+      "ip": "10.166.101.145",
+      "stream": "http://10.166.101.145:81/stream",
+      "udp_stream": 5006,
+      "control_port": 5005
+    }
+  },
+  {
+    "address": [
+      "10.166.101.157",
+      39093
+    ],
+    "payload": {
+      "type": "announce",
+      "version": 1,
+      "nonce": "dual1111",
+      "id": 1,
+      "ip": "10.166.101.157",
+      "stream": "http://10.166.101.157:81/stream",
+      "udp_stream": 5006,
+      "control_port": 5005
+    }
+  }
+]

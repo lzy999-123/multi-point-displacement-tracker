@@ -24,6 +24,8 @@ public:
 
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
+    void openChannel(int index, const QUrl &url);
+    void setChannelUnavailable(int index, const QString &reason);
 
 private:
     struct ChannelUi {
@@ -33,13 +35,15 @@ private:
         QPushButton *connectButton = nullptr;
         ColorParams params;
         QString deviceAddress;  // 通过发现得到的设备 IP，用于识别编号冲突
+        bool automaticConnectionAllowed = true;
+        QString unavailableReason;
     };
 
     QWidget *buildChannelPanel(int index);
     QWidget *buildParamPanel();
     void toggleChannel(int index);
-    void openChannel(int index, const QUrl &url);
     void onDeviceFound(const DeviceDiscovery::Device &device);
+    void updateDiscoveryStatus();
     void onStateChanged(int index, MjpegStream::State state, const QString &detail);
     void selectParamChannel(int index);
     void loadParamsToUi(const ColorParams &params);

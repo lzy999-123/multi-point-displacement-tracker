@@ -1,0 +1,46 @@
+{
+  "total_frames": 232,
+  "average_fps": 19.33,
+  "min_fps_after_warmup": 8,
+  "min_rolling_fps_after_warmup": 4,
+  "max_gap_ms": 865.33,
+  "per_second_fps": [
+    20,
+    27,
+    22,
+    28,
+    8,
+    8,
+    22,
+    21,
+    19,
+    23,
+    18,
+    16
+  ],
+  "wrong_resolution_frames": 0,
+  "decode_errors": 0,
+  "passed": false,
+  "duration_s": 12.0,
+  "elapsed_s": 12.011,
+  "target": "10.166.101.157:5006",
+  "local_ip": "10.166.101.174",
+  "measured_at": "2026-11-11T10:33:51.452968+08:00",
+  "total_packets": 740,
+  "unexpected_source_packets": 0,
+  "invalid_packets": 0,
+  "duplicate_or_old_packets": 0,
+  "recovery_resets": 0,
+  "acceptance_scope": "decoded UDP frames; not Qt display",
+  "criteria": {
+    "width": 320,
+    "height": 240,
+    "warmup_s": 2,
+    "min_fps": 20,
+    "max_gap_ms": 150
+  },
+  "tool_sha256": {
+    "check_esp32_udp_stream.py": "43a2aa90d86b2e2526205d81513c586170e7fe45abee5076fa752d3a076ed53a",
+    "vid1.py": "5aaacbe3d4a1ca15cd2c6c8837c31911d722b947f874d082a5afa8431eefd9a1"
+  }
+}

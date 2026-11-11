@@ -1,0 +1,112 @@
+{
+  "goal_passed": false,
+  "camera_ssid": "DH4504",
+  "router_management_available": false,
+  "channels": [
+    {
+      "id": 1,
+      "port": "COM5",
+      "chip": "ESP32-D0WD-V3",
+      "sensor": "OV3660",
+      "url": "http://192.168.110.96:81/stream",
+      "address_note": "Last confirmed original-MAC lease .96; latest 88s position test did not complete association/DHCP",
+      "app_sha256": "e92d512e2a77429d6861998bc92221361f0aa49b29ceb11c1682a9bf3dcedd8b",
+      "firmware_status": "Experimental PMF-off/8MHz video image; flash write digest verified; latest startup failed before camera init",
+      "antenna": "onboard; confirmed by user"
+    },
+    {
+      "id": 2,
+      "port": "COM3",
+      "chip": "ESP32-S3",
+      "sensor": "OV3660",
+      "url": "http://192.168.110.59:81/stream?nodelay=1",
+      "app_sha256": "4f3211dfd178101e6465665cbe35efa7199df6e39bce5fb9bc5febfd10286f1e",
+      "hardware_jpeg_verified": true,
+      "address_note": "Verified after reboot on COM3, lab DH4504, device ID2",
+      "firmware_status": "Original S3 firmware restored; 8MHz candidate failed; default 20MHz hardware JPEG active"
+    }
+  ],
+  "last_completed_dual_test": {
+    "path": "pmf-off-8mhz-cam/dual-60s.json",
+    "channel1_paints": 50,
+    "channel2_paints": 293,
+    "passed": false
+  },
+  "8mhz_research_test": {
+    "camera_initialized": true,
+    "frames_verified": true,
+    "goal_met": false,
+    "clock_lines": [
+      "[clock-test] XCLK=8000000 pll-result=0 regs=0,19,11,0 pclk=a"
+    ],
+    "ip": "192.168.110.96",
+    "source_exit": 1,
+    "disconnect_events": 0,
+    "serial_tail": [
+      "[compat] target BSSID=C6:70:AB:87:E0:D6 channel=8 RSSI=-54 auth=4 MAC=7C:D5:44:33:39:9C",
+      "[compat] phase=0 protocol-result=0",
+      "[compat] PMF-off config-result=0",
+      "[compat-event] associated",
+      "[compat-event] IP=192.168.110.96",
+      "[compat] phase=0 status=3 elapsed=1400 power=59",
+      "[wifi] ready IP=192.168.110.96 RSSI=-54 BSSID=C6:70:AB:87:E0:D6",
+      "[clock-test] XCLK=8000000 pll-result=0 regs=0,19,11,0 pclk=a",
+      "[cam] PID=0x3660 PSRAM=4194304 single-buffer JPEG",
+      "[stream] http://192.168.110.96:81/stream",
+      "[discovery] 监听 UDP 39093",
+      "[stream] 客户端已连接"
+    ],
+    "source_received_frames": 2,
+    "source_resolution": [
+      320,
+      240
+    ],
+    "source_first_frame_ms": 22703.65,
+    "source_passed": false,
+    "dual_channels": [
+      {
+        "id": 1,
+        "paints": 50,
+        "min_fps_after_warmup": 0,
+        "max_gap_ms_after_warmup": 34605,
+        "reconnect_observed": true,
+        "strict_passed": false
+      },
+      {
+        "id": 2,
+        "paints": 293,
+        "min_fps_after_warmup": 0,
+        "max_gap_ms_after_warmup": 20767,
+        "reconnect_observed": true,
+        "strict_passed": false
+      }
+    ],
+    "outcome": "real_320x240_images_received; long_stalls_and_reconnects; acceptance_failed"
+  },
+  "8mhz_candidate_removed_from_board": false,
+  "remaining_requirement": "Current S3+OV3660 hardware JPEG works via lab WiFi; sustained-display result in latest_s3_completed_display_test; original ESP32-CAM currently absent",
+  "latest_research_report": "docs/GitHub-ESP32CAM问题解决线索-2026-11-11.md",
+  "temporary_mac_restored": true,
+  "network_only_return_path_test": "sta-return-path/result.json",
+  "latest_position_test": {
+    "path": "position-separated-20cm/result.json",
+    "user_confirmed_repositioning": true,
+    "goal_passed": false,
+    "startup_finished": false
+  },
+  "s3_sensor_swap_report": "docs/S3更换OV3660实测-2026-11-11.md",
+  "latest_s3_completed_display_test": {
+    "path": "s3-ov3660-com3-qt90.json",
+    "duration_s": 90,
+    "channel": 2,
+    "frames": 2172,
+    "min_fps": 0,
+    "max_gap_ms": 1687,
+    "reconnect": false,
+    "passed": false,
+    "resolution": [
+      320,
+      240
+    ]
+  }
+}

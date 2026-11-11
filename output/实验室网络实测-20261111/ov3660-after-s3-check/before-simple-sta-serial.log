@@ -1,0 +1,100 @@
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+.....
+[wifi-event] STA 断开, reason=201
+
+[wifi-event] STA 断开, reason=36
+...
+[wifi] 45s 未连上，重启
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:4640
+load:0x40078000,len:15632
+load:0x40080400,len:3164
+entry 0x4008059c
+
+[boot] 位移跟踪相机 #1 (极速 UDP 直出引擎)
+[wifi] STA HT20 result=0
+[wifi] STA config result=0 PMF-capable=1 SDK=v5.5.5
+[wifi] 连接 DH4504....
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+...
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=4
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+.......E (39677) wifi:age_reorder: null rap
+
+[wifi-event] STA 断开, reason=15
+..
+[wifi-event] STA 断开, reason=2
+.......
+[wifi-event] STA 断开, reason=15
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=202
+......................
+[wifi] 45s 未连上，重启
+ets Jul 29 2019 12:21:46
+
+rst:0xc (SW_CPU_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:4640
+load:0x40078000,len:15632
+load:0x40080400,len:3164
+entry 0x4008059c
+
+[boot] 位移跟踪相机 #1 (极速 UDP 直出引擎)
+[wifi] STA HT20 result=0
+[wifi] STA config result=0 PMF-capable=1 SDK=v5.5.5
+[wifi] 连接 DH4504

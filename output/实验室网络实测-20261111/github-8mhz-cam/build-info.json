@@ -1,0 +1,22 @@
+{
+  "app_sha256": "f7ab667bf5097e8cfe986a90215519561db9e3fc409873374510cf1fed317e78",
+  "source_sha256": {
+    "displacement_cam.ino": "c91f897e9f2bc18525c0151861eb2d3d46580291b1559733cd043bf1fa99e720",
+    "config.h": "495a66906467820b5c51b2c658a2264a026dc821e2a5aaf136d61b0ff77d9cdc",
+    "camera_pins.h": "08af316fb94628dc77158e4a3a91190a6b1d76bbc7826af42c25ad3d64090148"
+  },
+  "snapshot": "D:\\esp32\\build-out\\ov3660-8mhz-github-20261111\\observed",
+  "xclk_hz": 8000000,
+  "pll_configuration": [
+    0,
+    25,
+    1,
+    0,
+    0,
+    0,
+    1,
+    10
+  ],
+  "qualification": "Experimental OV3660 adaptation of issue5834; not a verified fix",
+  "prior_board_baseline_snapshot": "D:/esp32/build-out/dual-lab-cam-id1-20261111"
+}

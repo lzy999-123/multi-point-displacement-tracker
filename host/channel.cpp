@@ -32,23 +32,36 @@ ChannelWorker::ChannelWorker(std::shared_ptr<std::atomic<int>> pending)
 
 void ChannelWorker::init()
 {
-    m_stream = new MjpegStream(this);
-    connect(m_stream, &MjpegStream::frameDecoded, this, &ChannelWorker::onFrame);
-    connect(m_stream, &MjpegStream::stateChanged, this, &ChannelWorker::stateChanged);
+    m_mjpegStream = new MjpegStream(this);
+    connect(m_mjpegStream, &MjpegStream::frameDecoded, this, &ChannelWorker::onFrame);
+    connect(m_mjpegStream, &MjpegStream::stateChanged, this, &ChannelWorker::stateChanged);
+
+    m_udpStream = new UdpStream(this);
+    connect(m_udpStream, &UdpStream::frameDecoded, this, &ChannelWorker::onFrame);
+    connect(m_udpStream, &UdpStream::stateChanged, this, &ChannelWorker::stateChanged);
 }
 
 void ChannelWorker::open(const QUrl &url)
 {
+    close();
     m_fpsWindowStart = -1;
     m_fpsFrames = 0;
     m_fps = 0.0;
-    m_stream->open(url);
+    if (url.scheme().toLower() == QStringLiteral("udp")) {
+        if (m_udpStream)
+            m_udpStream->open(url);
+    } else {
+        if (m_mjpegStream)
+            m_mjpegStream->open(url);
+    }
 }
 
 void ChannelWorker::close()
 {
-    if (m_stream)
-        m_stream->close();
+    if (m_udpStream)
+        m_udpStream->close();
+    if (m_mjpegStream)
+        m_mjpegStream->close();
     m_lastFrame.release();
 }
 
@@ -135,10 +148,13 @@ Channel::Channel(int id, QObject *parent)
 
 Channel::~Channel()
 {
-    // 在工作线程内关闭网络连接，再退出线程
-    QMetaObject::invokeMethod(m_worker, &ChannelWorker::close, Qt::BlockingQueuedConnection);
+    // 非阻塞异步通知工作线程关闭网络连接，再退出事件循环并安全回收线程
+    QMetaObject::invokeMethod(m_worker, &ChannelWorker::close, Qt::QueuedConnection);
     m_thread.quit();
-    m_thread.wait();
+    if (!m_thread.wait(1000)) {
+        m_thread.terminate();
+        m_thread.wait(500);
+    }
 }
 
 void Channel::open(const QUrl &url)

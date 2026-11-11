@@ -1,0 +1,8 @@
+{
+  "variant": "OV3660 drive strength and PCLK gating diagnostic; restore production app after comparison",
+  "app_sha256": "47908f874415cca29174d66409fa33acbcd13b9f6385dd8f4786a7f67973b789",
+  "source_sha256": "749d1b9dda20156dcfd4e28e33d151a6236eb8c1fcf5f084acd9b2fc74b7f3b6",
+  "source_path": "D:\\esp32\\build-out\\lab-drive-probe-20261111\\sketch\\displacement_cam\\displacement_cam.ino",
+  "official_register_source": "https://github.com/espressif/esp32-camera/blob/master/sensors/private_include/ov3660_regs.h",
+  "reference_blob_sha": "b5cf30a5b1da226aabbb368c5bed54fec33dc59b"
+}

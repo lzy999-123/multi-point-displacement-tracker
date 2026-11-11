@@ -15,10 +15,14 @@ public:
     void setResult(const ChannelResult &result);
     void setStatus(const QString &status);
     void setShowMask(bool show) { m_showMask = show; update(); }
+    void setRotate180(bool rotate) { m_rotate180 = rotate; update(); }
+    bool rotate180() const { return m_rotate180; }
     void clear();
 
 signals:
     void imageClicked(int x, int y);
+    // Emitted only when a new image is painted; useful for real viewer acceptance.
+    void framePresented(quint64 seq);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -31,4 +35,6 @@ private:
     QString m_status;
     ChannelResult m_result;
     bool m_showMask = false;
+    bool m_rotate180 = false;
+    qint64 m_lastPaintedImage = 0;
 };

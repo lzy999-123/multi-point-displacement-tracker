@@ -1,0 +1,23 @@
+.
+[wifi-event] STA 断开, reason=2
+....
+[wifi-event] STA 断开, reason=201
+
+[wifi-event] STA 断开, reason=36
+...
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=4
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] STA 断开, reason=2
+..
+[wifi-event] 已关联 AP
+...................

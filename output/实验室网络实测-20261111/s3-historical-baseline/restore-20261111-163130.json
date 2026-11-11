@@ -1,0 +1,11 @@
+{
+  "port": "COM6",
+  "chip": "ESP32-S3",
+  "mac": "e0:72:a1:d0:3d:e4",
+  "backup": "D:\\esp32\\backup\\20261111-162807-s3-e072a1d03de4-before-restore-8MB.bin",
+  "bytes": 8388608,
+  "sha256": "5faaf707b032d956b92af747128f61fa63a95caf7bffd0f2bbaebf9096fabf97",
+  "whole_device_verified": true,
+  "restore_completed": true,
+  "restored_app_sha256": "767811705adf2925a0e6592812cef97b3a6819ce4004778eed54ce25db268509"
+}

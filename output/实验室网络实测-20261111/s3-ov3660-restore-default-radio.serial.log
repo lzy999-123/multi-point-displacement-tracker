@@ -1,0 +1,17 @@
+ESP-ROM:esp32s3-20210327
+Build:Mar 27 2021
+rst:0x1 (POWERON),boot:0x28 (SPI_FAST_FLASH_BOOT)
+SPIWP:0xee
+mode:DIO, clock div:1
+load:0x3fce2820,len:0x10cc
+load:0x403c8700,len:0xc2c
+load:0x403cb700,len:0x30b0
+entry 0x403c88b8
+
+[boot] 位移跟踪相机 #2
+[cam] 传感器 PID=0x3660，硬件 JPEG
+[wifi] 连接 DH4504...
+[wifi] 已连接，IP 192.168.110.59，RSSI -54 dBm
+[stream] http://192.168.110.59:81/stream
+[discovery] 监听 UDP 39093
+[radio] IP=192.168.110.59 RSSI=-54 power=80 bandwidth=1

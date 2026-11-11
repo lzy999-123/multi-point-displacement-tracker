@@ -1,0 +1,45 @@
+{
+  "port": "COM6",
+  "display_channel": 2,
+  "firmware_changed": false,
+  "sensor_verified": true,
+  "goal_passed": false,
+  "hardware_jpeg_verified": true,
+  "identity_lines": [
+    "[cam] 传感器 PID=0x3660，硬件 JPEG",
+    "[wifi] 连接 DH4504...",
+    "[wifi] 已连接，IP 192.168.110.59，RSSI -47 dBm"
+  ],
+  "ip": "192.168.110.59",
+  "url": "http://192.168.110.59:81/stream?nodelay=0",
+  "source": {
+    "received_frames": 134,
+    "resolution": [
+      320,
+      240
+    ],
+    "first_frame_ms": 586.07,
+    "steady_min_source_fps": 0,
+    "steady_max_no_frame_ms": 10726.37,
+    "passed": false
+  },
+  "boot_count": 1,
+  "serial_tail": [
+    "[cam] 采集 27.7 fps，压缩 1.0 ms/帧，平均 2595 字节",
+    "[stream] 客户端断开",
+    "[stream] 客户端已连接",
+    "[stream] 客户端断开",
+    "[stream] 客户端已连接",
+    "[cam] 采集 27.3 fps，压缩 1.1 ms/帧，平均 2595 字节",
+    "[stream] 客户端断开",
+    "[stream] 客户端已连接",
+    "[cam] 采集 27.9 fps，压缩 1.1 ms/帧，平均 2596 字节",
+    "[stream] 发送 10.6 fps，每帧发送 平均 88.5 ms / 最长 561.9 ms，内部 RAM 剩余 215064 字节",
+    "[cam] 采集 27.6 fps，压缩 1.0 ms/帧，平均 2596 字节",
+    "[stream] 发送 8.4 fps，每帧发送 平均 99.7 ms / 最长 1489.3 ms，内部 RAM 剩余 214992 字节",
+    "[stream] 客户端断开",
+    "[stream] 客户端已连接",
+    "[cam] 采集 27.8 fps，压缩 1.0 ms/帧，平均 2596 字节"
+  ],
+  "outcome": "Qt closed without a complete measurement report"
+}

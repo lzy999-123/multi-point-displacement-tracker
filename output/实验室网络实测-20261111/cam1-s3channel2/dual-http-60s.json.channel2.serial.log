@@ -1,0 +1,14 @@
+[stream] 客户端已连接
+[jpeg] optimized encoder, input_alignment=0
+[cam] 采集 31.2 fps，压缩 18.3 ms/帧，平均 2247 字节
+[stream] 发送 3.6 fps，每帧发送 平均 268.8 ms / 最长 2314.3 ms，内部 RAM 剩余 192576 字节
+[cam] 采集 30.3 fps，压缩 18.0 ms/帧，平均 2247 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 29.7 fps，压缩 19.1 ms/帧，平均 3179 字节
+[stream] 发送 12.4 fps，每帧发送 平均 72.6 ms / 最长 1063.4 ms，内部 RAM 剩余 195648 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 31.9 fps，压缩 19.4 ms/帧，平均 3901 字节
+[stream] 客户端断开
+[stream] 客户端已连接

@@ -1,0 +1,100 @@
+Connecting....
+Detecting chip type... ESP32-S3
+Confirmed S3: e0:72:a1:d0:3d:e4
+Uploading stub flasher...
+Running stub flasher...
+Stub flasher running.
+Changing baud rate to 460800...
+Changed.
+Configuring flash size...
+Read 8388608 bytes from 0x00000000 in 197.7 seconds (339.5 kbit/s).
+Configuring flash size...
+Verifying 0x800000 (8388608) bytes at 0x00000000 in flash against input bytes...
+Verification successful (digest matched).
+Complete backup verified: D:\esp32\backup\20261111-162807-s3-e072a1d03de4-before-restore-8MB.bin
+Configuring flash size...
+
+Writing input at 0x00000000...
+SHA digest in image updated.
+Flash will be erased from 0x00000000 to 0x00004fff...
+Compressed 19968 bytes to 12992...
+Writing at 0x00004e00 ============================== 100.0% 12.69kB/12.69kB [0s] 
+Wrote 19968 bytes (12992 compressed) at 0x00000000 in 0.4 seconds (373.2 kbit/s).
+Verifying written data...
+Hash of data verified.
+
+Writing input at 0x00008000...
+Flash will be erased from 0x00008000 to 0x00008fff...
+Compressed 3072 bytes to 146...
+Writing at 0x00008c00 ============================== 100.0% 146B/146B [0s] 
+Wrote 3072 bytes (146 compressed) at 0x00008000 in 0.0 seconds (826.8 kbit/s).
+Verifying written data...
+Hash of data verified.
+
+Writing input at 0x0000e000...
+Flash will be erased from 0x0000e000 to 0x0000ffff...
+Compressed 8192 bytes to 47...
+Writing at 0x00010000 ============================== 100.0% 47B/47B [0s] 
+Wrote 8192 bytes (47 compressed) at 0x0000e000 in 0.1 seconds (1139.2 kbit/s).
+Verifying written data...
+Hash of data verified.
+
+Writing input at 0x00010000...
+Flash will be erased from 0x00010000 to 0x00105fff...
+Compressed 1007312 bytes to 657499...
+Writing at 0x0001bdb6 >                                2.5% 16.00kB/642.09kB [0s] 
+Writing at 0x000277ba =                                5.0% 32.00kB/642.09kB [0s] 
+Writing at 0x0002e2c6 ==                               7.5% 48.00kB/642.09kB [1s] 
+Writing at 0x00039863 ==>                             10.0% 64.00kB/642.09kB [1s] 
+Writing at 0x0003fd4f ===>                            12.5% 80.00kB/642.09kB [1s] 
+Writing at 0x00045889 ====                            15.0% 96.00kB/642.09kB [2s] 
+Writing at 0x0004b479 =====                           17.4% 112.00kB/642.09kB [2s] 
+Writing at 0x00050c30 =====>                          19.9% 128.00kB/642.09kB [3s] 
+Writing at 0x0005653b ======>                         22.4% 144.00kB/642.09kB [3s] 
+Writing at 0x0005bceb =======                         24.9% 160.00kB/642.09kB [3s] 
+Writing at 0x00060dd9 ========                        27.4% 176.00kB/642.09kB [4s] 
+Writing at 0x000661a7 ========>                       29.9% 192.00kB/642.09kB [4s] 
+Writing at 0x0006b5e6 =========>                      32.4% 208.00kB/642.09kB [4s] 
+Writing at 0x00070ae9 ==========                      34.9% 224.00kB/642.09kB [5s] 
+Writing at 0x000762ba ===========                     37.4% 240.00kB/642.09kB [5s] 
+Writing at 0x0007b596 ===========>                    39.9% 256.00kB/642.09kB [6s] 
+Writing at 0x00080a85 ============>                   42.4% 272.00kB/642.09kB [6s] 
+Writing at 0x00086012 =============                   44.9% 288.00kB/642.09kB [6s] 
+Writing at 0x0008b4c6 ==============                  47.3% 304.00kB/642.09kB [7s] 
+Writing at 0x000926d5 ==============>                 49.8% 320.00kB/642.09kB [7s] 
+Writing at 0x00098374 ===============>                52.3% 336.00kB/642.09kB [7s] 
+Writing at 0x0009da17 ================                54.8% 352.00kB/642.09kB [8s] 
+Writing at 0x000a2f59 =================               57.3% 368.00kB/642.09kB [8s] 
+Writing at 0x000a859d =================>              59.8% 384.00kB/642.09kB [9s] 
+Writing at 0x000ad9fe ==================>             62.3% 400.00kB/642.09kB [9s] 
+Writing at 0x000b2a09 ===================             64.8% 416.00kB/642.09kB [9s] 
+Writing at 0x000b8123 ====================            67.3% 432.00kB/642.09kB [10s] 
+Writing at 0x000bd57e ====================>           69.8% 448.00kB/642.09kB [10s] 
+Writing at 0x000c2bef =====================>          72.3% 464.00kB/642.09kB [10s] 
+Writing at 0x000c80b5 ======================          74.8% 480.00kB/642.09kB [11s] 
+Writing at 0x000cd644 =======================         77.2% 496.00kB/642.09kB [11s] 
+Writing at 0x000d2fb7 =======================>        79.7% 512.00kB/642.09kB [12s] 
+Writing at 0x000d8e17 ========================>       82.2% 528.00kB/642.09kB [12s] 
+Writing at 0x000de41d =========================       84.7% 544.00kB/642.09kB [12s] 
+Writing at 0x000e6ebc ==========================      87.2% 560.00kB/642.09kB [13s] 
+Writing at 0x000ee1ce ==========================>     89.7% 576.00kB/642.09kB [13s] 
+Writing at 0x000f33de ===========================>    92.2% 592.00kB/642.09kB [13s] 
+Writing at 0x000f92af ============================    94.7% 608.00kB/642.09kB [14s] 
+Writing at 0x000fee82 =============================   97.2% 624.00kB/642.09kB [14s] 
+Writing at 0x00104fb3 =============================>  99.7% 640.00kB/642.09kB [15s] 
+Writing at 0x00105ed0 ============================== 100.0% 642.09kB/642.09kB [15s] 
+Wrote 1007312 bytes (657499 compressed) at 0x00010000 in 15.2 seconds (530.2 kbit/s).
+Verifying written data...
+Hash of data verified.
+Configuring flash size...
+SHA digest in image updated.
+Verifying 0x4e00 (19968) bytes at 0x00000000 in flash against input bytes...
+Verification successful (digest matched).
+Verifying 0xc00 (3072) bytes at 0x00008000 in flash against input bytes...
+Verification successful (digest matched).
+Verifying 0x2000 (8192) bytes at 0x0000e000 in flash against input bytes...
+Verification successful (digest matched).
+Verifying 0xf5ed0 (1007312) bytes at 0x00010000 in flash against input bytes...
+Verification successful (digest matched).
+Historical S3 firmware restored and verified. Video acceptance remains pending.
+Hard resetting via RTS pin...

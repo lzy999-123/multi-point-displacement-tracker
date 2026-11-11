@@ -1,0 +1,44 @@
+{
+  "tests": [
+    {
+      "core": "3.3.12",
+      "camera_initialized": false,
+      "app_sha256": "3c16799c92fff408b8442a449b02c3eacee85358e745a304b022545ada452ab6",
+      "connected": true,
+      "ip": "192.168.110.96",
+      "echo": [
+        {
+          "bytes": 4,
+          "sent": 5,
+          "received": 0,
+          "rtt_ms": []
+        },
+        {
+          "bytes": 512,
+          "sent": 5,
+          "received": 0,
+          "rtt_ms": []
+        },
+        {
+          "bytes": 1400,
+          "sent": 5,
+          "received": 0,
+          "rtt_ms": []
+        }
+      ],
+      "outcome": "completed",
+      "disconnections": 0
+    },
+    {
+      "core": "2.0.17",
+      "camera_initialized": false,
+      "app_sha256": "9d7c64a385f6790877b44a5b5473b957eb8dcd09e0b6c75b7377a438f21605c5",
+      "connected": false,
+      "outcome": "completed",
+      "disconnections": 2
+    }
+  ],
+  "video_restore_exit": 0,
+  "video_restored": true,
+  "restored_app_sha256": "7ae297a15bd75ba4b572b3f151dc0ce39f179e2f7411ae9935679e4867a20306"
+}

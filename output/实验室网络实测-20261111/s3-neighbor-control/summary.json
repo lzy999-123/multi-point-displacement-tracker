@@ -1,0 +1,29 @@
+[
+  {
+    "condition": "neighbor-running",
+    "receiver_exit": 1,
+    "frames": 609,
+    "min_fps": 4,
+    "max_gap_ms": 487.28,
+    "passed": false,
+    "neighbor_serial_bytes": 276
+  },
+  {
+    "condition": "neighbor-held-reset",
+    "receiver_exit": 0,
+    "frames": 685,
+    "min_fps": 33,
+    "max_gap_ms": 90.95,
+    "passed": true,
+    "neighbor_serial_bytes": 0
+  },
+  {
+    "condition": "neighbor-released",
+    "receiver_exit": 0,
+    "frames": 681,
+    "min_fps": 31,
+    "max_gap_ms": 116.41,
+    "passed": true,
+    "neighbor_serial_bytes": 422
+  }
+]

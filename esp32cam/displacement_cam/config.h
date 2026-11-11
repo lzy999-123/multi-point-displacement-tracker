@@ -4,20 +4,72 @@
 // 设备编号 1～3，对应 STM32 的 USART1～3 和上位机的通道 1～3。
 #define DEVICE_ID 1
 
+// ===== 开发板 =====
+// 普通 ESP32-CAM（本次 ESP32-D0WD-V3 + OV3660）使用 AI-Thinker 引脚。
+// S3 构建保留原 S3-EYE 引脚和 GC2145 软件编码路径。
+#if defined(CONFIG_IDF_TARGET_ESP32)
+#define BOARD_AI_THINKER
+#endif
+
 // ===== 视频参数 =====
-// FRAMESIZE_QVGA(320x240) / FRAMESIZE_VGA(640x480) / FRAMESIZE_SVGA(800x600)
-#define CAM_FRAME_SIZE FRAMESIZE_VGA
-// JPEG 质量 10～63，数值越小画质越好、每帧越大
-#define CAM_JPEG_QUALITY 12
+// 用户要求：无线320x240 @20fps；以完整时段实测验收，不用降分辨率替代。
+#define CAM_FRAME_SIZE FRAMESIZE_QVGA
+// JPEG 质量 0～100（软件压缩）或 10～63（硬件压缩），见 displacement_cam.ino
+// 实际 JPEG 大小随场景变化；帧率与延时必须通过实机验收。
+#define CAM_SOFT_JPEG_QUALITY 20
+#define CAM_HW_JPEG_QUALITY 26
+#define CAM_FRAME_INTERVAL_MS 32
+#if defined(BOARD_AI_THINKER)
+#define CAM_XCLK_HZ 20000000
+#else
+#define CAM_XCLK_HZ 20000000
+#endif
+#define CAM_RAW_FB_COUNT 4
 // 按安装方向翻转画面（0 或 1）
+#if defined(BOARD_AI_THINKER)
+#define CAM_VFLIP 1
+#else
 #define CAM_VFLIP 0
+#endif
 #define CAM_HMIRROR 0
+
+// 功率与网络模式调优：
+// 发射功率需用实际路由器链路验收，最大功率不保证更低丢包。
+// 0: 纯 STA 模式（连接 secrets.h 指定的路由器，禁用内置 AP）
+// 1: 纯 AP 模式（独立热点 disp-cam-X，无路由器时的点对点模式）
+#define CAM_WIFI_MODE_AP 0
+#define CAM_AP_CHANNEL 1
+#define CAM_WIFI_TX_POWER WIFI_POWER_19_5dBm
+// WPA2 compatibility comparison for the lab AP; no router settings are changed.
+#define CAM_WIFI_PMF_CAPABLE 1
+// Diagnostic: compare a locally administered station address with the factory MAC.
+#define CAM_WIFI_TEST_LOCAL_MAC 0
 
 // ===== 端口（与 docs/通信协议.md 一致）=====
 #define STREAM_PORT 81
+#define STREAM_UDP_PORT 5006
+#define CAM_UDP_PAYLOAD_SIZE 1400
+#define CAM_UDP_CHUNK_INTERVAL_MS 2
+#define CAM_UDP_FRAME_BUDGET_MS 40
+#define CAM_UDP_RETRIES 3
+// 给TCP丢包重传保留时间，避免250ms超时触发反复断开/重连。
+// 不是整帧延迟的硬上限；等待期间采集任务继续覆盖旧画面。
+#define STREAM_SEND_TIMEOUT_MS 1000
+// 避免 multipart 尾部小段触发 Nagle/延迟 ACK 等待。可用 ?nodelay=0 对照。
+#define STREAM_TCP_NODELAY 1
 #define CONTROL_PORT 5005
 #define DISCOVERY_PORT 39093
 
 // ===== WiFi =====
 // 在同目录新建 secrets.h（参考 secrets.example.h），该文件不提交到仓库。
+#if !__has_include("secrets.h")
+#error "缺少 secrets.h：把 secrets.example.h 复制为 secrets.h，并填写 WiFi 名称和密码"
+#endif
 #include "secrets.h"
+
+// ===== 预留静态 IP 参数（当前未启用，不据此保证推流性能）=====
+#define CAM_USE_STATIC_IP 0
+#define CAM_IP_ADDR  192, 168, 110, 43
+#define CAM_IP_GW    192, 168, 110, 1
+#define CAM_IP_MASK  255, 255, 255, 0
+#define CAM_IP_DNS   192, 168, 110, 1

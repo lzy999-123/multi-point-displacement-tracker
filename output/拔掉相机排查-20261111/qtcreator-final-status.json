@@ -1,0 +1,13 @@
+{
+  "ProcessId": 29024,
+  "Executable": "D:\\新建文件夹\\文档\\大三\\26微机大作业\\host\\build\\Desktop_Qt_6_10_1_MSVC2022_64bit-Release\\release\\DisplacementTracker.exe",
+  "Responding": true,
+  "Streams": [
+    {
+      "RemoteAddress": "10.166.101.157",
+      "RemotePort": 81,
+      "State": 5
+    }
+  ],
+  "Sha256": "1783B6DF1C8F9D862FBA977D79BB40C8A57A064E64681A9C2697BF480942E06B"
+}

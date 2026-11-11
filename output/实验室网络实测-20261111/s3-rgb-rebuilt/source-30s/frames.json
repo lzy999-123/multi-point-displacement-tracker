@@ -1,0 +1,22 @@
+[
+  {
+    "seconds": 1.9140492999977141,
+    "bytes": 2137,
+    "sha256": "cc86c5c2476551bf971f1b5729248e2bc0a44621576a5fd8fd5856627d75b25d",
+    "seq": null,
+    "source_age_ms": null,
+    "capture_ms": null,
+    "width": 320,
+    "height": 240
+  },
+  {
+    "seconds": 2.3432359999969776,
+    "bytes": 2127,
+    "sha256": "2effa5e0cba4ff4cc551dc5deb6d4db06941c07f068e00a3541f8f190524fdd3",
+    "seq": null,
+    "source_age_ms": null,
+    "capture_ms": null,
+    "width": 320,
+    "height": 240
+  }
+]

@@ -9,6 +9,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSettings>
+#include <QCoreApplication>
 #include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
@@ -16,6 +18,7 @@
 #include <QVBoxLayout>
 
 #include "videowidget.h"
+#include "cameraconfigpath.h"
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 {
@@ -71,6 +74,7 @@ QWidget *MainWindow::buildChannelPanel(int index)
 
     ui.channel = new Channel(index + 1, this);
     ui.video = new VideoWidget(tr("通道 %1").arg(index + 1), box);
+    ui.video->setObjectName(QStringLiteral("video-%1").arg(index + 1));
     ui.video->setStatus(tr("未连接"));
     layout->addWidget(ui.video, 1);
 
@@ -78,7 +82,21 @@ QWidget *MainWindow::buildChannelPanel(int index)
     ui.urlEdit = new QLineEdit(box);
     ui.urlEdit->setPlaceholderText(tr("http://IP:81/stream（自动发现后填入）"));
     ui.connectButton = new QPushButton(tr("连接"), box);
+    auto *rotate = new QCheckBox(tr("旋转180°"), box);
+    rotate->setObjectName(QStringLiteral("rotate180-%1").arg(index + 1));
+    const QString rotationKey = (index == 0 ? QStringLiteral("camera")
+                                           : QStringLiteral("camera%1").arg(index + 1)) + "/rotate180";
+    const QString settingsPath = cameraSettingsPath();
+    QSettings settings(settingsPath, QSettings::IniFormat);
+    rotate->setChecked(settings.value(rotationKey, false).toBool());
+    ui.video->setRotate180(rotate->isChecked());
+    connect(rotate, &QCheckBox::toggled, ui.video, &VideoWidget::setRotate180);
+    connect(rotate, &QCheckBox::toggled, this, [settingsPath, rotationKey](bool checked) {
+        QSettings saved(settingsPath, QSettings::IniFormat);
+        saved.setValue(rotationKey, checked);
+    });
     row->addWidget(ui.urlEdit, 1);
+    row->addWidget(rotate);
     row->addWidget(ui.connectButton);
     layout->addLayout(row);
 
@@ -89,7 +107,7 @@ QWidget *MainWindow::buildChannelPanel(int index)
             toggleChannel(index);
     });
     connect(ui.channel, &Channel::resultReady, this, [this, index](const ChannelResult &r) {
-        m_channels[index].video->setResult(r);
+        if (m_channels[index].channel->isOpen()) m_channels[index].video->setResult(r);
         m_channels[index].channel->acknowledgeResult();
     });
     connect(ui.channel, &Channel::stateChanged, this,
@@ -255,8 +273,8 @@ void MainWindow::toggleChannel(int index)
         return;
     }
     const QUrl url = QUrl::fromUserInput(ui.urlEdit->text().trimmed());
-    if (!url.isValid() || url.scheme() != "http" || url.host().isEmpty()) {
-        statusBar()->showMessage(tr("通道 %1：地址无效，格式如 http://192.168.1.101:81/stream").arg(index + 1), 5000);
+    if (!url.isValid() || (url.scheme() != "http" && url.scheme() != "udp") || url.host().isEmpty()) {
+        statusBar()->showMessage(tr("通道 %1：地址无效，格式如 udp://192.168.1.101:5006 或 http://192.168.1.101:81/stream").arg(index + 1), 5000);
         return;
     }
     openChannel(index, url);
@@ -264,7 +282,10 @@ void MainWindow::toggleChannel(int index)
 
 void MainWindow::openChannel(int index, const QUrl &url)
 {
+    if (index < 0 || index >= kChannelCount) return;
     ChannelUi &ui = m_channels[index];
+    ui.automaticConnectionAllowed = true;
+    ui.unavailableReason.clear();
     ui.urlEdit->setText(url.toString());
     ui.urlEdit->setEnabled(false);
     ui.connectButton->setText(tr("断开"));
@@ -273,12 +294,35 @@ void MainWindow::openChannel(int index, const QUrl &url)
     ui.channel->open(url);
 }
 
+void MainWindow::setChannelUnavailable(int index, const QString &reason)
+{
+    if (index < 0 || index >= kChannelCount) return;
+    ChannelUi &ui = m_channels[index];
+    ui.automaticConnectionAllowed = false;
+    ui.unavailableReason = reason;
+    ui.channel->close();
+    ui.video->clear();
+    ui.video->setStatus(reason);
+    ui.connectButton->setText(tr("连接"));
+    ui.urlEdit->setEnabled(true);
+    ui.deviceAddress.clear();
+    updateDiscoveryStatus();
+}
+
+void MainWindow::updateDiscoveryStatus()
+{
+    int found = 0;
+    for (const auto &channel : m_channels) found += !channel.deviceAddress.isEmpty();
+    m_discoveryStatus->setText(tr("已发现 %1/%2 台设备").arg(found).arg(kChannelCount));
+}
+
 void MainWindow::onDeviceFound(const DeviceDiscovery::Device &device)
 {
     const int index = device.id - 1;
     if (index < 0 || index >= kChannelCount)
         return;
     ChannelUi &ui = m_channels[index];
+    if (!ui.automaticConnectionAllowed) return;
     const QString address = device.address.toString();
 
     if (!ui.deviceAddress.isEmpty() && ui.deviceAddress != address) {
@@ -289,14 +333,13 @@ void MainWindow::onDeviceFound(const DeviceDiscovery::Device &device)
     }
     if (ui.deviceAddress.isEmpty()) {
         ui.deviceAddress = address;
-        int found = 0;
-        for (const ChannelUi &c : m_channels)
-            found += c.deviceAddress.isEmpty() ? 0 : 1;
-        m_discoveryStatus->setText(tr("已发现 %1/%2 台设备").arg(found).arg(kChannelCount));
+        updateDiscoveryStatus();
+        // 已有设备接入后放慢广播频率（由 2s 改为 10s），彻底避免 2.4GHz 无线广播风暴引起视频卡顿
+        m_discovery.setInterval(10000);
     }
     // 用户已手动连接其他地址时不打扰
     if (!ui.channel->isOpen())
-        openChannel(index, device.streamUrl);
+        openChannel(index, device.bestStreamUrl());
 }
 
 void MainWindow::onStateChanged(int index, MjpegStream::State state, const QString &detail)
@@ -304,7 +347,8 @@ void MainWindow::onStateChanged(int index, MjpegStream::State state, const QStri
     QString text;
     switch (state) {
     case MjpegStream::State::Idle:
-        text = tr("未连接");
+        text = m_channels[index].automaticConnectionAllowed ? tr("未连接")
+                                                            : m_channels[index].unavailableReason;
         break;
     case MjpegStream::State::Connecting:
         text = tr("连接中…");

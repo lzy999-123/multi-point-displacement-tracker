@@ -1,0 +1,11 @@
+[stream] 客户端已连接
+[http] send failed result=b006 errno=11
+[stream] 客户端断开
+[stream] 客户端已连接
+[http] send failed result=b006 errno=11
+[stream] 客户端断开
+[stream] 客户端已连接
+[stream] 4.0 fps
+[stream] 5.0 fps
+[http] send failed result=b006 errno=11
+[stream] 客户端断开

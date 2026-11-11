@@ -1,4 +1,6 @@
 #include <QSignalSpy>
+#include <QNetworkDatagram>
+#include <QUdpSocket>
 #include <QtTest>
 
 #include <opencv2/imgcodecs.hpp>
@@ -8,6 +10,7 @@
 #include "devicediscovery.h"
 #include "mjpegparser.h"
 #include "mjpegstream.h"
+#include "udpstream.h"
 
 namespace {
 QByteArray encodeJpeg(const cv::Scalar &color, int w = 64, int h = 48)
@@ -53,6 +56,10 @@ private slots:
     void discoveryParsesAnnounce();
     void discoveryRejectsBadAnnounce();
     void streamReceivesFromFakeCamera();
+    void udpReordersAndRejectsDuplicates();
+    void udpRejectsWrongPeerAndMalformedChunks();
+    void udpRecoversAfterCameraRestart();
+    void udpWrapsAndSkipsBacklog();
 };
 
 void CoreTest::parserSplitsFramesWithContentLength()
@@ -213,6 +220,8 @@ void CoreTest::discoveryParsesAnnounce()
     QCOMPARE(d.controlPort, quint16(5005));
     // 视频地址使用实际来源 IP，而不是设备自报的 IP
     QCOMPARE(d.streamUrl, QUrl("http://192.168.4.7:81/stream"));
+    d.udpStreamPort = 5006;
+    QCOMPARE(d.bestStreamUrl(), QUrl("udp://192.168.4.7:5006"));
 
     // IPv4 映射的 IPv6 地址
     QVERIFY(DeviceDiscovery::parseAnnounce(msg, "abc", QHostAddress("::ffff:192.168.4.7"), &d));
@@ -256,3 +265,119 @@ void CoreTest::streamReceivesFromFakeCamera()
 
 QTEST_MAIN(CoreTest)
 #include "core_test.moc"
+
+namespace {
+class UdpFixture {
+public:
+    QUdpSocket camera;
+    UdpStream stream;
+    QSignalSpy decoded{&stream, &UdpStream::frameDecoded};
+    QHostAddress client;
+    quint16 clientPort = 0;
+    QByteArray jpeg = encodeJpeg(cv::Scalar(255, 0, 0), 320, 240);
+
+    UdpFixture() {
+        camera.bind(QHostAddress(QHostAddress::LocalHost), 0);
+        QObject::connect(&camera, &QUdpSocket::readyRead, [&] {
+            while (camera.hasPendingDatagrams()) {
+                const auto packet = camera.receiveDatagram();
+                client = packet.senderAddress();
+                clientPort = packet.senderPort();
+            }
+        });
+        stream.open(QUrl(QString("udp://127.0.0.1:%1").arg(camera.localPort())));
+    }
+    QByteArray packet(quint16 seq, int index) {
+        const int count = (int(jpeg.size()) + 1399) / 1400;
+        const int offset = index * 1400, size = qMin(1400, int(jpeg.size()) - offset);
+        VidPacketHeader hdr{0x31444956, 1, 0, seq, quint8(index), quint8(count),
+                            quint16(size), quint32(jpeg.size())};
+        QByteArray bytes(reinterpret_cast<const char *>(&hdr), sizeof(hdr));
+        bytes.append(jpeg.mid(offset, size));
+        return bytes;
+    }
+    void send(quint16 seq, QUdpSocket *sender = nullptr, bool reverse = false) {
+        const int count = (int(jpeg.size()) + 1399) / 1400;
+        for (int j = 0; j < count; ++j) {
+            const int i = reverse ? count - 1 - j : j;
+            (sender ? sender : &camera)->writeDatagram(packet(seq, i), client, clientPort);
+        }
+    }
+};
+} // namespace
+
+void CoreTest::udpReordersAndRejectsDuplicates()
+{
+    UdpFixture f;
+    QTRY_VERIFY(f.clientPort != 0);
+    f.send(10, nullptr, true);
+    QTRY_COMPARE(f.decoded.size(), 1);
+    f.send(10);
+    f.send(9);
+    QTest::qWait(50);
+    QCOMPARE(f.decoded.size(), 1);
+    f.send(11);
+    QTRY_COMPARE(f.decoded.size(), 2);
+    QCOMPARE(f.decoded.last()[0].value<cv::Mat>().cols, 320);
+}
+
+void CoreTest::udpRejectsWrongPeerAndMalformedChunks()
+{
+    UdpFixture f;
+    QTRY_VERIFY(f.clientPort != 0);
+    QUdpSocket unrelated;
+    unrelated.bind(QHostAddress(QHostAddress::LocalHost), 0);
+    f.send(1, &unrelated);
+    QByteArray invalid = f.packet(2, 0);
+    invalid[9] = char(255); // chunk_count 与 frame_size 不一致
+    f.camera.writeDatagram(invalid, f.client, f.clientPort);
+    invalid = f.packet(3, 0);
+    invalid.chop(1);
+    f.camera.writeDatagram(invalid, f.client, f.clientPort);
+    // 同一序号后续包改变 frame_size，且索引超出此前槽位。
+    f.camera.writeDatagram(f.packet(4, 0), f.client, f.clientPort);
+    VidPacketHeader mismatch{0x31444956, 1, 0, 4, 4, 5, 1400, 7000};
+    invalid = QByteArray(reinterpret_cast<const char *>(&mismatch), sizeof(mismatch)) + QByteArray(1400, 'x');
+    f.camera.writeDatagram(invalid, f.client, f.clientPort);
+    QTest::qWait(80);
+    QCOMPARE(f.decoded.size(), 0);
+    f.send(5);
+    QTRY_COMPARE(f.decoded.size(), 1);
+}
+
+void CoreTest::udpRecoversAfterCameraRestart()
+{
+    UdpFixture f;
+    QTRY_VERIFY(f.clientPort != 0);
+    f.send(10000);
+    QTRY_COMPARE(f.decoded.size(), 1);
+    f.send(0);
+    QTest::qWait(80);
+    QCOMPARE(f.decoded.size(), 1); // 没有断流前不能把旧包当作重启。
+    QTRY_VERIFY_WITH_TIMEOUT(f.stream.state() == MjpegStream::State::Reconnecting, 2100);
+    f.send(1);
+    QTRY_COMPARE(f.decoded.size(), 2);
+    QCOMPARE(f.stream.state(), MjpegStream::State::Streaming);
+}
+
+void CoreTest::udpWrapsAndSkipsBacklog()
+{
+    UdpFixture f;
+    QTRY_VERIFY(f.clientPort != 0);
+    f.send(65535);
+    QTRY_COMPARE(f.decoded.size(), 1);
+    f.send(0);
+    QTRY_COMPARE(f.decoded.size(), 2);
+    // 不处理事件，先把一批完整帧送入 socket；接收时只交付最新图像。
+    f.send(1);
+    f.send(2);
+    f.send(3);
+    QTRY_COMPARE(f.decoded.size(), 3);
+    QTest::qWait(40);
+    QCOMPARE(f.decoded.size(), 3);
+    f.send(2);
+    QTest::qWait(40);
+    QCOMPARE(f.decoded.size(), 3);
+    f.send(4);
+    QTRY_COMPARE(f.decoded.size(), 4);
+}

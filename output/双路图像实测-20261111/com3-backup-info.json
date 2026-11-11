@@ -1,0 +1,8 @@
+{
+  "port": "COM3",
+  "mac": "48:af:f3:50:7b:dc",
+  "bytes": 4194304,
+  "sha256": "34036606593fe7f69b71a4e65f10db1a0a7e0c727f1800fc2b600a4a890246ba",
+  "backup": "D:\\esp32\\backup\\20261111-com3-before-dual-4MB.bin",
+  "whole_device_verified": true
+}

@@ -1,0 +1,552 @@
+{
+    "channels": [
+        {
+            "decoded": {
+                "first_ms": -1,
+                "frames": 0,
+                "max_gap_ms_after_warmup": 35000,
+                "min_fps_after_warmup": 0,
+                "per_second": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "times_ms": [
+                ]
+            },
+            "display_passed": false,
+            "height": 0,
+            "id": 1,
+            "painted": {
+                "first_ms": -1,
+                "frames": 0,
+                "max_gap_ms_after_warmup": 35000,
+                "min_fps_after_warmup": 0,
+                "per_second": [
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "times_ms": [
+                ]
+            },
+            "reconnect_observed": true,
+            "rotate180": true,
+            "states": [
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 253,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 3238,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 4232,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 7239,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 8236,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 11240,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 12234,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 15233,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 16236,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 19234,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 20233,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 23237,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 24240,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 27232,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 28232,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 31233,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 32231,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 35241,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 36230,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 39240,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 40229,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 43231,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.157:81/stream",
+                    "ms": 44236,
+                    "state": 1
+                }
+            ],
+            "strict_20fps_passed": false,
+            "url": "http://10.166.101.157:81/stream",
+            "width": 0,
+            "wrong_resolution_observed": false
+        },
+        {
+            "decoded": {
+                "first_ms": 1274,
+                "frames": 10,
+                "max_gap_ms_after_warmup": 28485,
+                "min_fps_after_warmup": 0,
+                "per_second": [
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    2,
+                    3
+                ],
+                "times_ms": [
+                    1274,
+                    2751,
+                    6509,
+                    38485,
+                    41014,
+                    43109,
+                    43366,
+                    44121,
+                    44543,
+                    44640
+                ]
+            },
+            "display_passed": false,
+            "height": 240,
+            "id": 2,
+            "painted": {
+                "first_ms": 1275,
+                "frames": 10,
+                "max_gap_ms_after_warmup": 28485,
+                "min_fps_after_warmup": 0,
+                "per_second": [
+                    0,
+                    1,
+                    1,
+                    0,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1,
+                    0,
+                    0,
+                    1,
+                    0,
+                    2,
+                    3
+                ],
+                "times_ms": [
+                    1275,
+                    2751,
+                    6510,
+                    38485,
+                    41015,
+                    43109,
+                    43367,
+                    44122,
+                    44544,
+                    44640
+                ]
+            },
+            "reconnect_observed": true,
+            "rotate180": true,
+            "states": [
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 253,
+                    "state": 1
+                },
+                {
+                    "detail": "320×240",
+                    "ms": 1272,
+                    "state": 2
+                },
+                {
+                    "detail": "Connection closed",
+                    "ms": 1380,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 2380,
+                    "state": 1
+                },
+                {
+                    "detail": "320×240",
+                    "ms": 2750,
+                    "state": 2
+                },
+                {
+                    "detail": "Connection closed",
+                    "ms": 2817,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 3813,
+                    "state": 1
+                },
+                {
+                    "detail": "320×240",
+                    "ms": 6508,
+                    "state": 2
+                },
+                {
+                    "detail": "Connection closed",
+                    "ms": 6509,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 7518,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 10519,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 11518,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 14514,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 15515,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 18516,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 19515,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 22517,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 23519,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 26513,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 27514,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 30515,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 31514,
+                    "state": 1
+                },
+                {
+                    "detail": "3 秒没有收到画面",
+                    "ms": 34518,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 35509,
+                    "state": 1
+                },
+                {
+                    "detail": "320×240",
+                    "ms": 38484,
+                    "state": 2
+                },
+                {
+                    "detail": "Connection closed",
+                    "ms": 38757,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 39757,
+                    "state": 1
+                },
+                {
+                    "detail": "320×240",
+                    "ms": 41013,
+                    "state": 2
+                },
+                {
+                    "detail": "Connection closed",
+                    "ms": 41112,
+                    "state": 3
+                },
+                {
+                    "detail": "http://10.166.101.145:81/stream",
+                    "ms": 42109,
+                    "state": 1
+                },
+                {
+                    "detail": "320×240",
+                    "ms": 43108,
+                    "state": 2
+                }
+            ],
+            "strict_20fps_passed": false,
+            "url": "http://10.166.101.145:81/stream",
+            "width": 320,
+            "wrong_resolution_observed": false
+        }
+    ],
+    "criteria": {
+        "functional_min_new_paints_each_second_per_camera": 1,
+        "required_camera_count": 2,
+        "required_height": 240,
+        "required_width": 320,
+        "strict_max_gap_ms": 150,
+        "strict_min_new_paints_each_second_per_camera": 20
+    },
+    "duration_s": 45,
+    "simultaneous_display_passed": false,
+    "strict_20fps_passed": false,
+    "warmup_s": 10
+}

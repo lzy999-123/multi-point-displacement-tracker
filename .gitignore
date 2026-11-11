@@ -5,6 +5,7 @@ build*/
 
 # 本地配置（WiFi 账号等）
 esp32cam/**/secrets.h
+host/camera-runtime.ini
 
 # STM32 编译产物
 stm32/**/MDK-ARM/*/
@@ -15,3 +16,5 @@ stm32/**/Release/
 data/
 tmp/
 *.csv
+__pycache__/
+*.pyc

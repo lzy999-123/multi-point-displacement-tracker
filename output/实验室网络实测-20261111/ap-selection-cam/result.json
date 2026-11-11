@@ -1,0 +1,9 @@
+{
+  "board": "ESP32-CAM",
+  "port": "COM5",
+  "clock_hz": 8000000,
+  "video_verified": false,
+  "outcome": "startup_not_completed; clock/video acceptance not reached",
+  "wifi_disconnections": 8,
+  "pll_line": []
+}

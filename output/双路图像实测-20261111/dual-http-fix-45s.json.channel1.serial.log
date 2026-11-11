@@ -1,0 +1,13 @@
+[http] 客户端连接
+[stream-task] 待机监听中 (端口 5006, 内部RAM 117988 字节)
+[http] send failed: result=0xb006 errno=11 bytes=3842
+[http] 客户端断开
+[http] 客户端连接
+[stream-task] 待机监听中 (端口 5006, 内部RAM 128780 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 118152 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 124368 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 120652 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 124332 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 120572 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 109724 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 118048 字节)

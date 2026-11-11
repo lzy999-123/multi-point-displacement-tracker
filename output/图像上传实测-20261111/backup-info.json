@@ -1,0 +1,7 @@
+{
+  "mac": "7c:d5:44:33:39:9c",
+  "bytes": 4194304,
+  "sha256": "8724fc3e8dc6199b4c513084bca59e4daf2a5cbe41a1ca1cf1615e43985a8d1f",
+  "whole_device_verified": true,
+  "note": "Refreshed NVS and verified the entire snapshot in one bootloader session."
+}

@@ -20,13 +20,26 @@ public:
         int id = 0;
         QHostAddress address;
         QUrl streamUrl;
+        quint16 udpStreamPort = 0;
         quint16 controlPort = 0;
+
+        QUrl bestStreamUrl() const {
+            if (udpStreamPort > 0) {
+                QUrl url;
+                url.setScheme(QStringLiteral("udp"));
+                url.setHost(address.toString());
+                url.setPort(udpStreamPort);
+                return url;
+            }
+            return streamUrl;
+        }
     };
 
     explicit DeviceDiscovery(QObject *parent = nullptr);
 
     void start();
     void stop();
+    void setInterval(int ms) { m_timer.setInterval(ms); }
     bool isRunning() const { return m_timer.isActive(); }
 
     // 解析一条回复；nonce 不符、字段缺失或 id 越界时返回 false。

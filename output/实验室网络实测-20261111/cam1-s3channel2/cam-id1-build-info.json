@@ -1,0 +1,11 @@
+{
+  "source_directory": "D:\\esp32\\build-out\\ov3660-http-single-20261111\\sketch\\displacement_cam",
+  "snapshot": "D:\\esp32\\build-out\\dual-lab-cam-id1-20261111",
+  "app_sha256": "7ae297a15bd75ba4b572b3f151dc0ce39f179e2f7411ae9935679e4867a20306",
+  "app_bytes": 1029376,
+  "source_sha256": {
+    "displacement_cam.ino": "e86e1e0188de19bc4b9f36dd5cb3477bca808581d94d63b00e51a31db62538f8",
+    "config.h": "495a66906467820b5c51b2c658a2264a026dc821e2a5aaf136d61b0ff77d9cdc",
+    "camera_pins.h": "08af316fb94628dc77158e4a3a91190a6b1d76bbc7826af42c25ad3d64090148"
+  }
+}

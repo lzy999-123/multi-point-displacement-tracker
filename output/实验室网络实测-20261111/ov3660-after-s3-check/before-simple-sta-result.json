@@ -1,0 +1,8 @@
+{
+  "camera_port": "COM5",
+  "firmware_changed": false,
+  "tests": [],
+  "s3_condition": "COM6 still enumerated; held in reset during test",
+  "status": "camera_did_not_finish_startup",
+  "boot_count": 2
+}

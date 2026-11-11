@@ -26,6 +26,7 @@ void VideoWidget::setStatus(const QString &status)
 void VideoWidget::clear()
 {
     m_result = ChannelResult();
+    m_lastPaintedImage = 0;
     update();
 }
 
@@ -46,8 +47,13 @@ void VideoWidget::paintEvent(QPaintEvent *)
 
     const QRectF target = imageRect();
     if (!target.isNull()) {
+        p.save();
+        if (m_rotate180) {
+            p.translate(target.center());
+            p.rotate(180);
+            p.translate(-target.center());
+        }
         const bool useMask = m_showMask && !m_result.mask.isNull();
-        p.setRenderHint(QPainter::SmoothPixmapTransform);
         p.drawImage(target, useMask ? m_result.mask : m_result.image);
 
         const double sx = target.width() / m_result.image.width();
@@ -75,6 +81,7 @@ void VideoWidget::paintEvent(QPaintEvent *)
                 p.drawLine(center, c);
             }
         }
+        p.restore(); // Status text stays upright; detection coordinates stay in source space.
     }
 
     // 文字信息
@@ -105,6 +112,10 @@ void VideoWidget::paintEvent(QPaintEvent *)
     p.setPen(Qt::white);
     for (int i = 0; i < lines.size(); ++i)
         p.drawText(box.left() + 6, box.top() + 4 + fm.ascent() + i * lineH, lines[i]);
+    if (!m_result.image.isNull() && m_result.image.cacheKey() != m_lastPaintedImage) {
+        m_lastPaintedImage = m_result.image.cacheKey();
+        emit framePresented(m_result.seq);
+    }
 }
 
 void VideoWidget::mousePressEvent(QMouseEvent *event)
@@ -114,7 +125,12 @@ void VideoWidget::mousePressEvent(QMouseEvent *event)
     const QRectF target = imageRect();
     if (target.isNull() || !target.contains(event->position()))
         return;
-    const double x = (event->position().x() - target.left()) * m_result.image.width() / target.width();
-    const double y = (event->position().y() - target.top()) * m_result.image.height() / target.height();
-    emit imageClicked(int(x), int(y));
+    int x = int((event->position().x() - target.left()) * m_result.image.width() / target.width());
+    int y = int((event->position().y() - target.top()) * m_result.image.height() / target.height());
+    if (x < 0 || y < 0 || x >= m_result.image.width() || y >= m_result.image.height()) return;
+    if (m_rotate180) {
+        x = m_result.image.width() - 1 - x;
+        y = m_result.image.height() - 1 - y;
+    }
+    emit imageClicked(x, y);
 }

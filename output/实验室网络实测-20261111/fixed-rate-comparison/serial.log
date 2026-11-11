@@ -1,0 +1,114 @@
+[diag] IP=192.168.110.96 Heap=145812 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=-52 power=78
+[radio] power result=1 value=59
+
+[wifi-event] STA 断开, reason=8
+[radio] protocol=3 result=0
+E (28758) wifi:can't set fix rate when tx ampdu is enabled
+[radio] fixed-rate command=6 result=262
+
+[wifi-event] 已关联 AP
+[stream-task] 待机监听中 (端口 5006, 内部RAM 145912 字节)
+
+[wifi-event] 获取到 IP: 192.168.110.96
+[diag] IP=192.168.110.96 Heap=145944 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=-53 power=59
+[net] STA MAC=7C:D5:44:33:39:9C mask=255.255.255.0 gateway=192.168.110.1
+[net-check] peer=192.168.110.163:63536 echo=4 errno=0
+[net-check] peer=192.168.110.163:63536 echo=4 errno=0
+[net-check] peer=192.168.110.163:63536 echo=4 errno=0
+[stream-task] 待机监听中 (端口 5006, 内部RAM 145388 字节)
+[net-check] peer=192.168.110.163:63536 echo=256 errno=0
+[net-check] peer=192.168.110.163:63536 echo=256 errno=0
+[net-check] peer=192.168.110.163:63536 echo=256 errno=0
+[net-check] peer=192.168.110.163:63536 echo=512 errno=0
+[net-check] peer=192.168.110.163:63536 echo=512 errno=0
+[net-check] peer=192.168.110.163:63536 echo=512 errno=0
+[net-check] peer=192.168.110.163:63536 echo=1024 errno=0
+[net-check] peer=192.168.110.163:63536 echo=1024 errno=0
+[net-check] peer=192.168.110.163:63536 echo=1024 errno=0
+[net-check] peer=192.168.110.163:63536 echo=1400 errno=0
+[net-check] peer=192.168.110.163:63536 echo=1400 errno=0
+[net-check] peer=192.168.110.163:63536 echo=1400 errno=0
+[stream-task] 待机监听中 (端口 5006, 内部RAM 139944 字节)
+[udp] 上位机接入: 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[stream-task] UDP 推流 1.8 fps (分片 37, 失败 119, 内部RAM 101896 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[stream-task] UDP 推流 0.0 fps (分片 13, 失败 139, 内部RAM 95824 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[stream-task] UDP 推流 0.0 fps (分片 10, 失败 139, 内部RAM 92336 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:64706
+[udp] 上位机心跳超时，进入待机
+E (58475) wifi:can't set fix rate when tx ampdu is enabled
+[radio] fixed-rate command=1 result=262
+
+[wifi-event] STA 断开, reason=8
+[stream-task] 待机监听中 (端口 5006, 内部RAM 111140 字节)
+
+[wifi-event] 已关联 AP
+[wifi] STA 断开，主动重连
+
+[wifi-event] STA 断开, reason=8
+
+[wifi-event] 已关联 AP
+
+[wifi-event] 获取到 IP: 192.168.110.96
+[diag] IP=192.168.110.96 Heap=142328 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=-52 power=59
+[net] STA MAC=7C:D5:44:33:39:9C mask=255.255.255.0 gateway=192.168.110.1
+[net-check] peer=192.168.110.163:62648 echo=4 errno=0
+[net-check] peer=192.168.110.163:62648 echo=4 errno=0
+[net-check] peer=192.168.110.163:62648 echo=4 errno=0
+[net-check] peer=192.168.110.163:62648 echo=256 errno=0
+[stream-task] 待机监听中 (端口 5006, 内部RAM 144656 字节)
+[net-check] peer=192.168.110.163:62648 echo=256 errno=0
+[net-check] peer=192.168.110.163:62648 echo=256 errno=0
+[net-check] peer=192.168.110.163:62648 echo=512 errno=0
+[net-check] peer=192.168.110.163:62648 echo=512 errno=0
+[net-check] peer=192.168.110.163:62648 echo=512 errno=0
+[net-check] peer=192.168.110.163:62648 echo=1024 errno=0
+[net-check] peer=192.168.110.163:62648 echo=1024 errno=0
+[net-check] peer=192.168.110.163:62648 echo=1024 errno=0
+[net-check] peer=192.168.110.163:62648 echo=1400 errno=0
+[net-check] peer=192.168.110.163:62648 echo=1400 errno=0
+[net-check] peer=192.168.110.163:62648 echo=1400 errno=0
+[stream-task] 待机监听中 (端口 5006, 内部RAM 139600 字节)
+[udp] 上位机接入: 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[stream-task] UDP 推流 1.8 fps (分片 38, 失败 128, 内部RAM 100480 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[stream-task] UDP 推流 0.0 fps (分片 10, 失败 139, 内部RAM 96992 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[stream-task] UDP 推流 0.0 fps (分片 11, 失败 139, 内部RAM 92320 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:62650
+[udp] 上位机心跳超时，进入待机

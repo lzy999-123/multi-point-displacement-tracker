@@ -1,0 +1,18 @@
+[radio] ht20 result=0
+[radio] IP=192.168.110.59 RSSI=-52 power=80 bandwidth=1
+[stream] 客户端已连接
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.9 fps，压缩 1.1 ms/帧，平均 2586 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[stream] 客户端断开
+[stream] 客户端已连接
+[stream] 客户端断开
+[stream] 客户端已连接
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.7 fps，压缩 1.0 ms/帧，平均 2586 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.9 fps，压缩 1.0 ms/帧，平均 2588 字节

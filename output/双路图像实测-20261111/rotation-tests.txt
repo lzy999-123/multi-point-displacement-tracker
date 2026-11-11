@@ -1,0 +1,11 @@
+********* Start testing of ViewerTest *********
+Config: Using QtTest library 6.10.1, Qt 6.10.1 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : ViewerTest::initTestCase()
+QWARN  : ViewerTest::rotationPreservesSourceAndMapsClicks() QFontDatabase: Cannot find font directory D:/????????/???/????/26????????/host/build/run/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+PASS   : ViewerTest::rotationPreservesSourceAndMapsClicks()
+PASS   : ViewerTest::detectionAndMaskRotateWithPicture()
+PASS   : ViewerTest::letterboxClicksStayOutOfSource()
+PASS   : ViewerTest::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 17ms
+********* Finished testing of ViewerTest *********

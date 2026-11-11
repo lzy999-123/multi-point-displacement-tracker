@@ -1,0 +1,10 @@
+[udp] 上位机接入: 192.168.4.2:54910
+[stream-task] UDP 推流 11.0 fps (分片 178, 失败 0, 内部RAM 135372 字节)
+[stream-task] UDP 推流 27.8 fps (分片 466, 失败 0, 内部RAM 139444 字节)
+[stream-task] UDP 推流 27.8 fps (分片 502, 失败 0, 内部RAM 136172 字节)
+[stream-task] UDP 推流 27.7 fps (分片 604, 失败 0, 内部RAM 134020 字节)
+[stream-task] UDP 推流 27.8 fps (分片 596, 失败 0, 内部RAM 139224 字节)
+[stream-task] UDP 推流 27.8 fps (分片 534, 失败 0, 内部RAM 133828 字节)
+[stream-task] UDP 推流 27.8 fps (分片 548, 失败 0, 内部RAM 136492 字节)
+[stream-task] UDP 推流 27.8 fps (分片 423, 失败 0, 内部RAM 139444 字节)
+[stream-task] UDP 推流 27.8 fps (分片 278, 失败 0, 内部RAM 139444 字节)

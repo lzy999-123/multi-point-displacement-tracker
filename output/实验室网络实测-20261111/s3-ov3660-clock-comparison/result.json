@@ -1,0 +1,19 @@
+{
+  "baseline_app_sha256": "4f3211dfd178101e6465665cbe35efa7199df6e39bce5fb9bc5febfd10286f1e",
+  "candidate_app_sha256": "32c8af7b09cea7baae2359b7eebe119c9323589eaaf6f98fd64d77738cbe1151",
+  "retained_candidate": false,
+  "measurement_exit": 0,
+  "source": {
+    "received_frames": 83,
+    "resolution": [
+      320,
+      240
+    ],
+    "first_frame_ms": 6637.03,
+    "steady_min_source_fps": 0,
+    "steady_max_no_frame_ms": 7889.88,
+    "passed": false
+  },
+  "display_passed": false,
+  "original_restored": true
+}

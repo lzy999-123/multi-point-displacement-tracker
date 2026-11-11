@@ -1,0 +1,26 @@
+[diag] IP=192.168.4.1 Heap=142520 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=0 power=78
+[stream-task] 待机监听中 (端口 5006, 内部RAM 137960 字节)
+[udp] 上位机接入: 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.4.2:50834
+[stream-task] UDP 推流 7.0 fps (分片 106, 失败 13, 内部RAM 135964 字节)
+[stream-task] UDP 推流 27.8 fps (分片 417, 失败 0, 内部RAM 135688 字节)
+[stream-task] UDP 推流 27.8 fps (分片 417, 失败 0, 内部RAM 139024 字节)
+[stream-task] UDP 推流 27.8 fps (分片 417, 失败 0, 内部RAM 139024 字节)
+[stream-task] UDP 推流 27.8 fps (分片 417, 失败 0, 内部RAM 139572 字节)
+[stream-task] UDP 推流 27.8 fps (分片 417, 失败 0, 内部RAM 139572 字节)
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[stream-task] UDP 推流 19.2 fps (分片 288, 失败 43, 内部RAM 141996 字节)
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp-tx] sendto fail: ret=-1 errno=-1 to 192.168.4.2:50834
+[udp] 上位机心跳超时，进入待机

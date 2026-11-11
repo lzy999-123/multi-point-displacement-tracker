@@ -1,0 +1,12 @@
+{
+  "framework": "Arduino-ESP32 3.3.12",
+  "fqbn": "esp32:esp32:esp32s3:PSRAM=opi,FlashSize=8M",
+  "identity_scope": "Rebuilt from retained RGB source; not claimed byte-identical to historical flash",
+  "app_bytes": 983216,
+  "app_sha256": "39dd8e08be7fc7b4766e7ff5611463dff3520f79084643c5e38bf644fe879a0b",
+  "source_sha256": {
+    "config.h": "cb2dcde40a9a89e3c69e97401ae4c96dee8f0431e09c2785e5deebbc9c37c4dd",
+    "camera_pins.h": "f30894a23d8fc8f6ed25b08ae5fa9e3e7b4f147048ea2afd2b21198efed72339",
+    "displacement_cam.ino": "cee529d138d87057ab363dfffeadd27e623f154c88892545cabdf868140cb1a7"
+  }
+}

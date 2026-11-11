@@ -1,0 +1,20 @@
+[diag] IP=10.166.101.157 Heap=145884 PSRAM=4155184 Clients(UDP=0,HTTP=0)
+[udp] 上位机接入: 10.166.101.174:64870
+[stream-task] UDP 推流 0.0 fps (分片 0, 失败 0, 内部RAM 145656 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[stream-task] UDP 推流 23.4 fps (分片 356, 失败 22, 内部RAM 96220 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[stream-task] UDP 推流 19.8 fps (分片 305, 失败 40, 内部RAM 100352 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:64870

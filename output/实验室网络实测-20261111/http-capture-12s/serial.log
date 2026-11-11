@@ -1,0 +1,16 @@
+
+[wifi-event] STA 断开, reason=8
+[stream-task] 待机监听中 (端口 5006, 内部RAM 146168 字节)
+
+[wifi-event] STA 断开, reason=15
+
+[wifi-event] 已关联 AP
+[wifi] STA 断开，主动重连
+
+[wifi-event] STA 断开, reason=8
+
+[wifi-event] 已关联 AP
+
+[wifi-event] 获取到 IP: 192.168.110.96
+[stream-task] 待机监听中 (端口 5006, 内部RAM 145040 字节)
+[stream-task] 待机监听中 (端口 5006, 内部RAM 143816 字节)

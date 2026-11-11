@@ -1,0 +1,4 @@
+{"port": "COM6", "display_channel": 2, "firmware_changed": false, "sensor_verified": true, "goal_passed": false, "hardware_jpeg_verified": true, "identity_lines": ["[cam] 传感器 PID=0x3660，硬件 JPEG", "[wifi] 连接 DH4504.", "[wifi] 已连接，IP 192.168.110.59，RSSI -52 dBm"], "ip": "192.168.110.59", "url": "http://192.168.110.59:81/stream?nodelay=0"}
+Source: {"received_frames": 83, "resolution": [320, 240], "first_frame_ms": 6637.03, "steady_min_source_fps": 0, "steady_max_no_frame_ms": 7889.88, "passed": false}
+Qt: {"width": 320, "height": 240, "reconnect_observed": true, "strict_20fps_passed": false}
+Qt paints: 203 minimum fps: 0 max gap: 16481

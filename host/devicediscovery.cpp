@@ -67,7 +67,8 @@ bool DeviceDiscovery::parseAnnounce(const QByteArray &datagram, const QString &n
     if (error.error != QJsonParseError::NoError || !doc.isObject())
         return false;
     const QJsonObject obj = doc.object();
-    if (obj.value("type").toString() != "announce" || obj.value("version").toInt() != 1
+    const int ver = obj.value("version").toInt();
+    if (obj.value("type").toString() != "announce" || (ver != 1 && ver != 2)
         || obj.value("nonce").toString() != nonce)
         return false;
 
@@ -88,9 +89,11 @@ bool DeviceDiscovery::parseAnnounce(const QByteArray &datagram, const QString &n
     url.setHost(address.toString());
 
     const int controlPort = obj.value("control_port").toInt(0);
+    const int udpPort = obj.value("udp_stream").toInt(0);
     device->id = id;
     device->address = address;
     device->streamUrl = url;
+    device->udpStreamPort = (udpPort > 0 && udpPort < 65536) ? quint16(udpPort) : 0;
     device->controlPort = controlPort > 0 && controlPort < 65536 ? quint16(controlPort) : 0;
     return true;
 }

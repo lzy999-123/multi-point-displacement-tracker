@@ -1,0 +1,57 @@
+[stream] 客户端已连接
+[stream] 发送 20.8 fps，每帧发送 平均 13.5 ms / 最长 1144.8 ms，内部 RAM 剩余 211320 字节
+[cam] 采集 27.1 fps，压缩 1.0 ms/帧，平均 3012 字节
+[cam] 采集 27.2 fps，压缩 1.0 ms/帧，平均 5045 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 25.9 fps，压缩 1.2 ms/帧，平均 5838 字节
+[stream] 发送 19.5 fps，每帧发送 平均 31.2 ms / 最长 1123.3 ms，内部 RAM 剩余 213620 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+cam_hal: FB-OVF
+cam_hal: FB-OVF
+cam_hal: FB-OVF
+cam_hal: FB-OVF
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.1 fps，压缩 1.1 ms/帧，平均 4462 字节
+[stream] 发送 17.2 fps，每帧发送 平均 37.0 ms / 最长 1534.8 ms，内部 RAM 剩余 213896 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 26.5 fps，压缩 1.1 ms/帧，平均 5024 字节
+[stream] 发送 9.1 fps，每帧发送 平均 103.7 ms / 最长 1341.6 ms，内部 RAM 剩余 216644 字节
+[cam] 采集 25.8 fps，压缩 1.2 ms/帧，平均 4746 字节
+[stream] 发送 23.9 fps，每帧发送 平均 12.8 ms / 最长 228.9 ms，内部 RAM 剩余 212648 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.7 fps，压缩 1.0 ms/帧，平均 4005 字节
+[stream] 发送 3.7 fps，每帧发送 平均 263.0 ms / 最长 1527.5 ms，内部 RAM 剩余 213984 字节
+[cam] 采集 27.4 fps，压缩 1.1 ms/帧，平均 2593 字节
+[stream] 发送 14.9 fps，每帧发送 平均 50.3 ms / 最长 1343.0 ms，内部 RAM 剩余 215072 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.7 fps，压缩 1.1 ms/帧，平均 2595 字节
+[stream] 发送 11.1 fps，每帧发送 平均 72.0 ms / 最长 1675.6 ms，内部 RAM 剩余 210520 字节
+[cam] 采集 27.6 fps，压缩 1.0 ms/帧，平均 2594 字节
+[stream] 发送 5.3 fps，每帧发送 平均 187.8 ms / 最长 1907.9 ms，内部 RAM 剩余 215456 字节
+[cam] 采集 27.8 fps，压缩 1.1 ms/帧，平均 2592 字节
+[stream] 发送 6.6 fps，每帧发送 平均 148.4 ms / 最长 1697.9 ms，内部 RAM 剩余 215072 字节
+[cam] 采集 27.8 fps，压缩 1.0 ms/帧，平均 2593 字节
+[stream] 发送 6.4 fps，每帧发送 平均 146.6 ms / 最长 1732.8 ms，内部 RAM 剩余 215072 字节
+[cam] 采集 27.6 fps，压缩 1.1 ms/帧，平均 2592 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.3 fps，压缩 1.1 ms/帧，平均 2592 字节
+[stream] 发送 6.4 fps，每帧发送 平均 147.2 ms / 最长 2339.9 ms，内部 RAM 剩余 215472 字节
+[cam] 采集 27.6 fps，压缩 1.0 ms/帧，平均 2592 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[cam] 采集 27.7 fps，压缩 1.1 ms/帧，平均 2592 字节
+[stream] 客户端断开
+[stream] 客户端已连接
+[stream] 客户端断开
+[stream] 客户端已连接
+[stream] 发送 8.4 fps，每帧发送 平均 103.9 ms / 最长 1439.1 ms，内部 RAM 剩余 210976 字节
+[cam] 采集 27.1 fps，压缩 1.0 ms/帧，平均 2592 字节
+[cam] 采集 27.0 fps，压缩 1.1 ms/帧，平均 2592 字节
+[stream] 客户端断开

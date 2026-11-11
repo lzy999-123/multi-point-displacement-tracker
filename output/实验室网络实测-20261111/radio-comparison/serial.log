@@ -1,0 +1,90 @@
+[diag] IP=192.168.110.96 Heap=145728 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=-51 power=59
+[radio] power result=1 value=59
+
+[wifi-event] STA 断开, reason=8
+[radio] protocol=3 result=0
+
+[wifi-event] 已关联 AP
+[wifi] STA 断开，主动重连
+
+[wifi-event] STA 断开, reason=8
+
+[wifi-event] 已关联 AP
+
+[wifi-event] 获取到 IP: 192.168.110.96
+[stream-task] 待机监听中 (端口 5006, 内部RAM 145988 字节)
+[diag] IP=192.168.110.96 Heap=146152 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=-51 power=59
+[net] STA MAC=7C:D5:44:33:39:9C mask=255.255.255.0 gateway=192.168.110.1
+[udp] 上位机接入: 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[stream-task] UDP 推流 2.0 fps (分片 39, 失败 98, 内部RAM 101440 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[stream-task] UDP 推流 0.0 fps (分片 9, 失败 139, 内部RAM 98292 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp] 上位机心跳超时，进入待机
+[udp] 上位机接入: 192.168.110.163:56814
+[stream-task] UDP 推流 0.0 fps (分片 10, 失败 111, 内部RAM 94836 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:56814
+[udp] 上位机心跳超时，进入待机
+[stream-task] 待机监听中 (端口 5006, 内部RAM 94200 字节)
+
+[wifi-event] STA 断开, reason=8
+[radio] protocol=7 result=0
+
+[wifi-event] 已关联 AP
+[wifi] STA 断开，主动重连
+
+[wifi-event] STA 断开, reason=8
+
+[wifi-event] 已关联 AP
+
+[wifi-event] 获取到 IP: 192.168.110.96
+[diag] IP=192.168.110.96 Heap=110596 PSRAM=4155184 Clients(UDP=0,HTTP=0) RSSI=-51 power=59
+[net] STA MAC=7C:D5:44:33:39:9C mask=255.255.255.0 gateway=192.168.110.1
+[udp] 上位机接入: 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[stream-task] UDP 推流 0.8 fps (分片 12, 失败 5, 内部RAM 96176 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[stream-task] UDP 推流 0.0 fps (分片 15, 失败 139, 内部RAM 96772 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[stream-task] UDP 推流 1.4 fps (分片 31, 失败 132, 内部RAM 100212 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[stream-task] UDP 推流 4.4 fps (分片 72, 失败 117, 内部RAM 103684 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:59145
+[udp] 上位机心跳超时，进入待机

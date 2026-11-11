@@ -1,0 +1,11 @@
+{
+  "board": "ESP32-D0WD-V3 + OV3660",
+  "port": "COM5",
+  "channel": 1,
+  "files": {
+    "boot_app0.bin": "f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0",
+    "displacement_cam.ino.bin": "e92d512e2a77429d6861998bc92221361f0aa49b29ceb11c1682a9bf3dcedd8b",
+    "displacement_cam.ino.bootloader.bin": "f7ec7b7d9026e12dd3616bf79cee0e78974a2605afbc2863fcfb0ac9aeb159d4",
+    "displacement_cam.ino.partitions.bin": "aaae2888c5a6a348004b5b436f47abb25ae32e72d9003902955a998eda723edd"
+  }
+}

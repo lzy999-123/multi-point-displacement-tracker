@@ -1,0 +1,35 @@
+[udp] 上位机接入: 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[stream-task] UDP 推流 9.4 fps (分片 155, 失败 3, 内部RAM 101904 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[stream-task] UDP 推流 2.6 fps (分片 63, 失败 126, 内部RAM 108596 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[stream-task] UDP 推流 22.0 fps (分片 380, 失败 29, 内部RAM 129052 字节)
+[stream-task] UDP 推流 27.8 fps (分片 400, 失败 0, 内部RAM 139040 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[stream-task] UDP 推流 26.8 fps (分片 426, 失败 5, 内部RAM 140840 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[stream-task] UDP 推流 26.6 fps (分片 482, 失败 6, 内部RAM 140776 字节)
+[stream-task] UDP 推流 27.8 fps (分片 453, 失败 0, 内部RAM 140292 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195
+[stream-task] UDP 推流 27.4 fps (分片 548, 失败 2, 内部RAM 116132 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 10.166.101.174:52195

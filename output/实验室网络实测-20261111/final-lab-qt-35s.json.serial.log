@@ -1,0 +1,48 @@
+[udp] 上位机接入: 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 5.6 fps (分片 88, 失败 91, 内部RAM 109264 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 4.4 fps (分片 71, 失败 117, 内部RAM 103384 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 5.6 fps (分片 87, 失败 111, 内部RAM 105020 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 4.0 fps (分片 65, 失败 119, 内部RAM 106008 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 5.4 fps (分片 85, 失败 112, 内部RAM 105976 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 4.4 fps (分片 71, 失败 117, 内部RAM 103384 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[stream-task] UDP 推流 4.8 fps (分片 79, 失败 115, 内部RAM 103544 字节)
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
+[udp-tx] sendto fail: ret=-1 errno=12 to 192.168.110.163:49361
