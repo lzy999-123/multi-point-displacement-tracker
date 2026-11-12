@@ -5,12 +5,13 @@
     [int]$DeviceId = 0,
     [ValidateSet('ESP32Cam', 'S3')]
     [string]$Board = 'ESP32Cam',
-    [ValidateSet('3.3.12', '2.0.17')]
-    [string]$Framework = '3.3.12',
+    [ValidateSet('', '3.3.12', '2.0.17')]
+    [string]$Framework = '',
     [string]$ToolRoot = 'D:\esp32',
     [string]$BuildDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
+if (!$Framework) { $Framework = if ($Board -eq 'S3') { '2.0.17' } else { '3.3.12' } }
 
 # 0 keeps the source ID; explicit IDs are applied only to the staged copy.
 function Set-StagedDeviceId([string]$StagePath) {
@@ -23,15 +24,20 @@ function Set-StagedDeviceId([string]$StagePath) {
 }
 
 if (!$BuildDirectory) {
-    $folder = if ($Board -eq 'ESP32Cam') { "displacement-cam-ov3660-$Framework" } else { 'displacement-cam-2.0.17' }
+    $folder = if ($Board -eq 'ESP32Cam') { "displacement-cam-ov3660-$Framework" }
+              elseif ($Framework -eq '2.0.17') { 'displacement-cam-2.0.17' }
+              else { "displacement-cam-s3-$Framework" }
     $BuildDirectory = Join-Path $ToolRoot "build-out\$folder"
 }
-if ($Board -eq 'ESP32Cam') {
+if ($Board -eq 'ESP32Cam' -or $Framework -eq '3.3.12') {
     $cli = Join-Path $ToolRoot 'arduino-cli\arduino-cli.exe'
     $config = Join-Path $ToolRoot 'arduino-cli\arduino-cli.yaml'
     $core = Join-Path $ToolRoot 'arduino15\packages\esp32\hardware\esp32\3.3.12'
     $compileProperties = @()
     $fqbn = 'esp32:esp32:esp32cam:FlashMode=dio,FlashFreq=40'
+    if ($Board -eq 'S3') {
+        $fqbn = 'esp32:esp32:esp32s3:PSRAM=opi,FlashSize=8M,FlashMode=dio'
+    }
     if ($Framework -eq '2.0.17') {
         $config = Join-Path $ToolRoot 'compat-2.0.17\arduino-cli.yaml'
         $core = Join-Path $ToolRoot 'compat-2.0.17\core-extract\esp32-2.0.17'
@@ -47,7 +53,7 @@ if ($Board -eq 'ESP32Cam') {
         if (!(Test-Path -LiteralPath $required)) { throw "缺少工具链文件：$required" }
     }
     if ((Get-Content -LiteralPath "$core\package.json" -Raw | ConvertFrom-Json).version -ne $Framework) {
-        throw "ESP32Cam 构建要求 Arduino-ESP32 $Framework。"
+        throw "$Board 构建要求 Arduino-ESP32 $Framework。"
     }
     $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
     if ($BuildDirectory -match '[^\x00-\x7F]') { throw '构建目录要求为ASCII路径。' }
@@ -75,10 +81,14 @@ if ($Board -eq 'ESP32Cam') {
     $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$BuildDirectory\build-info.json" -Encoding utf8
     Write-Host "构建完成：$app"
     if ($Flash) {
-        # --chip 防止把普通ESP32固件误写到旧S3板；不执行整片擦除。
-        & $python -m esptool --chip esp32 --port $Port --baud 115200 write-flash `
-            --flash-mode dio --flash-freq 40m --flash-size 4MB `
-            0x1000 "$output\displacement_cam.ino.bootloader.bin" `
+        # 根据已选择的板型限制芯片与地址，不执行整片擦除。
+        $chip = if ($Board -eq 'S3') { 'esp32s3' } else { 'esp32' }
+        $flashFreq = if ($Board -eq 'S3') { '80m' } else { '40m' }
+        $flashSize = if ($Board -eq 'S3') { '8MB' } else { '4MB' }
+        $bootOffset = if ($Board -eq 'S3') { '0x0' } else { '0x1000' }
+        & $python -m esptool --chip $chip --port $Port --baud 115200 write-flash `
+            --flash-mode dio --flash-freq $flashFreq --flash-size $flashSize `
+            $bootOffset "$output\displacement_cam.ino.bootloader.bin" `
             0x8000 "$output\displacement_cam.ino.partitions.bin" `
             0xe000 "$output\boot_app0.bin" 0x10000 $app
         if ($LASTEXITCODE -ne 0) { throw "烧录失败：$LASTEXITCODE" }
@@ -137,7 +147,7 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$BuildDirectory\
 Write-Host "构建完成：$app"
 if ($Flash) {
     if (!(Test-Path -LiteralPath $python)) { throw "缺少烧录用Python：$python" }
-    & $python -m esptool --port $Port --baud 230400 write-flash `
+    & $python -m esptool --chip esp32s3 --port $Port --baud 230400 write-flash `
         --flash-mode dio --flash-freq 80m --flash-size 8MB `
         0x0 "$output\displacement_cam.ino.bootloader.bin" `
         0x8000 "$output\displacement_cam.ino.partitions.bin" `

@@ -1,6 +1,6 @@
 // ESP32-CAM 固件：无线视频推流，性能以真实接收与显示验收为准。
 // 支持轻量 VID1 UDP 视频流与标准 HTTP MJPEG。
-// 普通 ESP32-CAM (ESP32-D0WD-V3 + OV3660) 采用硬件 JPEG + 零拷贝 UDP 直出。
+// OV3660 使用硬件 JPEG；共享最新帧及 UDP 整帧副本放在 PSRAM。
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -16,6 +16,7 @@
 #include "lwip/etharp.h"
 #include <fcntl.h>
 #include "esp_wifi.h"
+#include "esp_private/wifi.h"  // 无线发送完成统计与串口诊断
 
 #pragma pack(push, 1)
 struct VidPacketHeader {
@@ -46,11 +47,16 @@ static const uint32_t kStreamStallMs = 2000;
 static httpd_handle_t streamServer = nullptr;
 static WiFiUDP discoveryUdp;
 
-// 上位机推流目标地址与状态（Core 1 通过 UDP 5006 接收心跳并极速直出推流）
-static sockaddr_in g_peer = {};
-static std::atomic<bool> g_hasPeer{false};
-static std::atomic<uint32_t> g_lastHeartbeat{0};
 static std::atomic<uint32_t> g_lastWifiEvent{0};
+static std::atomic<uint32_t> g_txDone{0};
+static std::atomic<uint32_t> g_txFailed{0};
+
+static void wifiTxDone(uint8_t ifidx, uint8_t *, uint16_t *, bool success) {
+  if (ifidx != WIFI_IF_STA && ifidx != WIFI_IF_AP) return;
+  // Wi-Fi 任务上下文：只更新计数，不做分配或串口输出。
+  if (success) g_txDone.fetch_add(1, std::memory_order_relaxed);
+  else g_txFailed.fetch_add(1, std::memory_order_relaxed);
+}
 
 // ---------- 最新 JPEG 副本（仅供 HTTP 兼容客户端读取）----------
 
@@ -241,9 +247,17 @@ static void captureTask(void *) {
 // ---------- UDP 视频流任务 (Core 0：与 Wi-Fi / lwIP 同核运行) ----------
 
 static void udpVideoTask(void *) {
+  constexpr size_t kFrameCapacity = 65536; // 与 VID1 接收端的最大 JPEG 长度一致
+  uint8_t *frameBuf = static_cast<uint8_t *>(ps_malloc(kFrameCapacity));
+  if (!frameBuf) {
+    Serial.println("[udp-stream] PSRAM 视频缓存申请失败");
+    vTaskDelete(nullptr);
+    return;
+  }
   int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (fd < 0) {
     Serial.println("[udp-stream] socket 失败");
+    free(frameBuf);
     vTaskDelete(nullptr);
     return;
   }
@@ -256,21 +270,26 @@ static void udpVideoTask(void *) {
   if (bind(fd, reinterpret_cast<sockaddr *>(&local), sizeof(local)) < 0) {
     Serial.printf("[udp-stream] bind 端口 %d 失败 errno=%d\n", STREAM_UDP_PORT, errno);
     close(fd);
+    free(frameBuf);
     vTaskDelete(nullptr);
     return;
   }
   Serial.printf("[udp-stream] 监听端口 %d (Core 0 运行，与 Wi-Fi 协议栈同核)\n", STREAM_UDP_PORT);
+  const int tos = CAM_UDP_IP_TOS;
+  const int tosResult = setsockopt(fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
+  Serial.printf("[udp-stream] IP_TOS=0x%x result=%d\n", tos, tosResult);
 
   sockaddr_in peer = {};
   bool hasPeer = false;
   uint32_t lastHeartbeat = 0;
   uint32_t lastSeq = 0;
+  uint32_t nextSendAt = millis();   // 下一帧最早发送时刻（固定节拍）
+  uint32_t backoffMs = 0;           // 当前退避时长，0 表示未退避
   constexpr size_t kMaxChunkPayload = CAM_UDP_PAYLOAD_SIZE;
   constexpr size_t kHeaderSize = sizeof(VidPacketHeader);
   static uint8_t packetBuf[kHeaderSize + kMaxChunkPayload];
-  static uint8_t frameBuf[32768];
 
-  uint32_t framesSent = 0, chunksSent = 0, sendFailures = 0;
+  uint32_t framesSent = 0, chunksSent = 0, sendFailures = 0, backoffCount = 0, sendRetries = 0;
   uint32_t windowStart = millis();
 
   for (;;) {
@@ -317,17 +336,33 @@ static void udpVideoTask(void *) {
       continue;
     }
 
-    // 2. 等待新帧（最新帧覆盖机制）
-    const uint32_t currentSeq = g_jpegSeq.load();
+    // 2. 固定节拍：未到发送时刻就短暂等待（期间继续轮询心跳），
+    //    到点后只取最新一帧，中间产生的帧自然被覆盖跳过。
+    const uint32_t nowMs = millis();
+    if (int32_t(nowMs - nextSendAt) < 0) {
+      const uint32_t waitMs = nextSendAt - nowMs;
+      vTaskDelay(pdMS_TO_TICKS(waitMs > 5 ? 5 : waitMs));
+      continue;
+    }
+
+    // 3. 等待新帧（最新帧覆盖机制）；未就绪不消耗本拍，下一轮立刻再试。
+    uint32_t currentSeq = g_jpegSeq.load();
     if (currentSeq == lastSeq) {
       vTaskDelay(pdMS_TO_TICKS(2));
       continue;
     }
+    // 下一帧时刻按节拍累加；落后超过一个周期时重新对齐，避免追帧突发。
+    nextSendAt += CAM_UDP_FRAME_INTERVAL_MS;
+    if (int32_t(nowMs - nextSendAt) > 0) {
+      nextSendAt = nowMs + CAM_UDP_FRAME_INTERVAL_MS;
+    }
 
     size_t frameLen = 0;
     xSemaphoreTake(g_jpegMutex, portMAX_DELAY);
+    // 序号和内容须在同一次锁内读取，防止采集恰好更新时标错帧。
+    currentSeq = g_jpegSeq.load();
     frameLen = g_jpegLen;
-    if (frameLen > 0 && frameLen <= sizeof(frameBuf)) {
+    if (frameLen > 0 && frameLen <= kFrameCapacity) {
       memcpy(frameBuf, g_jpegBuf, frameLen);
     } else {
       frameLen = 0;
@@ -335,9 +370,12 @@ static void udpVideoTask(void *) {
     xSemaphoreGive(g_jpegMutex);
     lastSeq = currentSeq;
 
-    if (frameLen == 0) continue;
+    if (frameLen == 0) {
+      nextSendAt = millis(); // 空帧不占节拍，立即重试
+      continue;
+    }
 
-    // 3. 构造 VID1 数据报分片发送
+    // 4. 构造 VID1 数据报分片发送
     const uint8_t chunkCount = static_cast<uint8_t>((frameLen + kMaxChunkPayload - 1) / kMaxChunkPayload);
     VidPacketHeader *hdr = reinterpret_cast<VidPacketHeader *>(packetBuf);
     hdr->magic = 0x31444956;  // 'VID1'
@@ -348,7 +386,12 @@ static void udpVideoTask(void *) {
     hdr->frame_size = static_cast<uint32_t>(frameLen);
 
     bool frameOk = true;
+    const uint32_t frameStarted = millis();
     for (uint8_t c = 0; c < chunkCount; ++c) {
+      if (millis() - frameStarted >= CAM_UDP_FRAME_BUDGET_MS) {
+        frameOk = false;
+        break;
+      }
       const size_t offset = c * kMaxChunkPayload;
       const size_t chunkBytes = (c == chunkCount - 1) ? (frameLen - offset) : kMaxChunkPayload;
 
@@ -358,11 +401,18 @@ static void udpVideoTask(void *) {
 
       const size_t totalBytes = kHeaderSize + chunkBytes;
       int sent = -1;
-      for (int retry = 0; retry < 8; ++retry) {
-        sent = sendto(fd, packetBuf, totalBytes, 0,
+      for (unsigned retry = 0; retry <= CAM_UDP_PACKET_RETRIES; ++retry) {
+        if (millis() - frameStarted >= CAM_UDP_FRAME_BUDGET_MS) break;
+        sent = sendto(fd, packetBuf, totalBytes, MSG_DONTWAIT,
                       reinterpret_cast<sockaddr *>(&peer), sizeof(peer));
         if (sent == static_cast<int>(totalBytes)) break;
-        vTaskDelay(pdMS_TO_TICKS(3));
+        const int error = errno;
+        if (retry == CAM_UDP_PACKET_RETRIES ||
+            (error != ENOMEM && error != ENOBUFS && error != EAGAIN)) break;
+        const uint32_t spent = millis() - frameStarted;
+        if (spent + CAM_UDP_RETRY_INTERVAL_MS >= CAM_UDP_FRAME_BUDGET_MS) break;
+        ++sendRetries;
+        vTaskDelay(pdMS_TO_TICKS(CAM_UDP_RETRY_INTERVAL_MS));
       }
 
       if (sent == static_cast<int>(totalBytes)) {
@@ -370,27 +420,39 @@ static void udpVideoTask(void *) {
       } else {
         frameOk = false;
         ++sendFailures;
-        if (sendFailures <= 10) {
+        if (sendFailures <= 5) {
           Serial.printf("[udp-err] sendto chunk=%d/%d ret=%d errno=%d\n", c, chunkCount, sent, errno);
         }
         break; // 立即放弃残缺帧剩余分片，杜绝把破损包推入信道
       }
 
       if (c + 1 < chunkCount) {
-        vTaskDelay(pdMS_TO_TICKS(4)); // 分片平滑间隔 4ms
+        vTaskDelay(pdMS_TO_TICKS(CAM_UDP_CHUNK_INTERVAL_MS));
       }
     }
 
     if (frameOk) {
       ++framesSent;
+      backoffMs = 0;
+    } else {
+      // 退避：暂停发送让 Wi-Fi 驱动排空队列；连续失败则加倍，封顶。
+      backoffMs = backoffMs == 0 ? CAM_UDP_BACKOFF_MS
+                                 : (backoffMs * 2 > CAM_UDP_BACKOFF_MAX_MS ? CAM_UDP_BACKOFF_MAX_MS
+                                                                          : backoffMs * 2);
+      ++backoffCount;
+      nextSendAt = millis() + backoffMs;
     }
 
     const uint32_t now = millis();
     if (now - windowStart >= 5000) {
-      Serial.printf("[udp-stream] UDP 推流 %.1f fps (分片 %u, 失败 %u, 内部RAM %u 字节)\n",
-                    framesSent * 1000.0f / (now - windowStart), chunksSent, sendFailures,
+      Serial.printf("[udp-stream] UDP 推流 %.1f fps (分片 %u, 失败 %u, 退避 %u, 内部RAM %u 字节)\n",
+                    framesSent * 1000.0f / (now - windowStart), chunksSent, sendFailures, backoffCount,
                     static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
-      framesSent = chunksSent = sendFailures = 0;
+      Serial.printf("[radio-tx] 完成=%u 失败=%u 内部最大连续块=%u 有限重试=%u\n",
+                    static_cast<unsigned>(g_txDone.exchange(0)),
+                    static_cast<unsigned>(g_txFailed.exchange(0)),
+                    static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)), sendRetries);
+      framesSent = chunksSent = sendFailures = backoffCount = sendRetries = 0;
       windowStart = now;
     }
   }
@@ -581,6 +643,7 @@ static void setupWifi() {
 #endif
   esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20);
   esp_wifi_set_ps(WIFI_PS_NONE);
+  Serial.printf("[wifi] AP TX统计回调 result=%d\n", int(esp_wifi_set_tx_done_cb(wifiTxDone)));
   Serial.printf("\n[wifi] 独立直连 AP 启动: SSID=%s IP=%s 信道=%d 状态=%d\n",
                 ssid, WiFi.softAPIP().toString().c_str(), CAM_AP_CHANNEL, ok);
 #else
@@ -591,6 +654,7 @@ static void setupWifi() {
   WiFi.persistent(false);
   WiFi.setHostname(hostname);
   WiFi.mode(WIFI_STA);
+  Serial.printf("[wifi] Arduino 原生初始化，TX统计回调 result=%d\n", int(esp_wifi_set_tx_done_cb(wifiTxDone)));
   WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
@@ -662,6 +726,13 @@ static void pollDiagnostics() {
       const bool ok = WiFi.setTxPower(c == 'p' ? WIFI_POWER_15dBm : CAM_WIFI_TX_POWER);
       Serial.printf("[radio] power result=%d value=%d\n", ok, int(WiFi.getTxPower()));
     }
+    // 'f' 锁定 STA 发送速率 24Mbps（802.11g OFDM）；'F' 恢复自动速率。复位后自动恢复。
+    // 注意：TX AMPDU 开启时（默认）接口返回 ESP_ERR_NOT_SUPPORTED，此命令不生效。
+    if (c == 'f' || c == 'F') {
+      const bool lock = (c == 'f');
+      const esp_err_t err = esp_wifi_internal_set_fix_rate(WIFI_IF_STA, lock, WIFI_PHY_RATE_24M);
+      Serial.printf("[radio] fix_rate=%s result=%d\n", lock ? "24M" : "auto", int(err));
+    }
     if (c == 'b' || c == 'g' || c == 'r') {
       WiFi.disconnect(false, false);
       if (c != 'r') {
@@ -680,7 +751,7 @@ static void pollDiagnostics() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\n[boot] 位移跟踪相机 #%d (极速 UDP 直出引擎)\n", DEVICE_ID);
+  Serial.printf("\n[boot] 位移跟踪相机 #%d vga-paced-tx-v5 %s %s\n", DEVICE_ID, __DATE__, __TIME__);
 
 #ifdef FLASH_LED_GPIO_NUM
   pinMode(FLASH_LED_GPIO_NUM, OUTPUT);

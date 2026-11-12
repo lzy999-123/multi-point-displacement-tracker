@@ -1,4 +1,4 @@
-// Real two-camera display evidence using the production startup and paint path.
+// Real camera display evidence using the production startup and paint path.
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSettings>
+#include <QSet>
 #include <QTimer>
 #include <algorithm>
 #include <array>
@@ -24,9 +25,13 @@ struct Samples {
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
-    if (argc != 3 && argc != 4) return 2; // duration, output JSON, optional one-connected
+    if (argc != 3 && argc != 4 && argc != 6) return 2; // duration, JSON, count, optional width/height
     const bool oneConnected = argc == 4 && app.arguments()[3] == "one-connected";
-    if (argc == 4 && !oneConnected) return 2;
+    const int cameraCount = argc >= 4 && !oneConnected ? app.arguments()[3].toInt() : 2;
+    const int expectedWidth = argc == 6 ? app.arguments()[4].toInt() : 320;
+    const int expectedHeight = argc == 6 ? app.arguments()[5].toInt() : 240;
+    if (expectedWidth < 1 || expectedHeight < 1) return 2;
+    if (cameraCount < 2 || cameraCount > MainWindow::kChannelCount) return 2;
     bool valid = false;
     const int seconds = app.arguments()[1].toInt(&valid);
     constexpr int warmupMs = 10000;
@@ -34,28 +39,35 @@ int main(int argc, char **argv)
     const QString output = app.arguments()[2];
     const QString settingsPath = cameraSettingsPath();
     QSettings settings(settingsPath, QSettings::IniFormat);
-    const std::array<QUrl, 2> urls{QUrl(settings.value("camera/url").toString()),
-                                  QUrl(settings.value("camera2/url").toString())};
-    if (urls[0].host().isEmpty() || urls[1].host().isEmpty() || urls[0].host() == urls[1].host()) return 2;
+    std::array<QUrl, MainWindow::kChannelCount> urls;
+    QSet<QString> hosts;
+    for (int i = 0; i < cameraCount; ++i) {
+        const QString group = i == 0 ? QStringLiteral("camera") : QStringLiteral("camera%1").arg(i + 1);
+        urls[i] = QUrl(settings.value(group + "/url").toString());
+        if (urls[i].host().isEmpty() || hosts.contains(urls[i].host())) return 2;
+        hosts.insert(urls[i].host());
+    }
     CameraRuntime runtime(settingsPath);
-    if (runtime.configuredStreamCount() != 2) return 2;
-    std::array<QFile, 2> serialLogs;
-    for (int i = 0; i < 2; ++i) {
+    if (runtime.configuredStreamCount() != cameraCount) return 2;
+    std::array<QFile, MainWindow::kChannelCount> serialLogs;
+    for (int i = 0; i < cameraCount; ++i) {
         serialLogs[i].setFileName(output + QStringLiteral(".channel%1.serial.log").arg(i + 1));
         if (!serialLogs[i].open(QIODevice::WriteOnly)) return 3;
     }
     QObject::connect(&runtime, &CameraRuntime::serialDataReceived, &app,
                      [&](int index, const QByteArray &data) {
-        if (index < 2) { serialLogs[index].write(data); serialLogs[index].flush(); }
+        if (index < cameraCount) { serialLogs[index].write(data); serialLogs[index].flush(); }
     });
     MainWindow window;
     window.setWindowFlag(Qt::WindowStaysOnTopHint);
-    std::array<Channel *, 2> channels{};
-    std::array<VideoWidget *, 2> videos{};
-    std::array<Samples, 2> samples;
+    std::array<Channel *, MainWindow::kChannelCount> channels{};
+    std::array<VideoWidget *, MainWindow::kChannelCount> videos{};
+    std::array<Samples, MainWindow::kChannelCount> samples;
     QElapsedTimer clock;
     clock.start();
-    for (int i = 0; i < 2; ++i) {
+    for (int i = cameraCount; i < MainWindow::kChannelCount; ++i)
+        window.setChannelUnavailable(i, QStringLiteral("本次未测试此通道"));
+    for (int i = 0; i < cameraCount; ++i) {
         for (Channel *channel : window.findChildren<Channel *>())
             if (channel->id() == i + 1) channels[i] = channel;
         videos[i] = window.findChild<VideoWidget *>(QStringLiteral("video-%1").arg(i + 1));
@@ -64,7 +76,7 @@ int main(int argc, char **argv)
             auto &sample = samples[i];
             sample.decoded.append(clock.elapsed());
             sample.width = r.image.width(); sample.height = r.image.height();
-            sample.wrongResolution |= sample.width != 320 || sample.height != 240;
+            sample.wrongResolution |= sample.width != expectedWidth || sample.height != expectedHeight;
         });
         QObject::connect(videos[i], &VideoWidget::framePresented, &window, [&, i](quint64) {
             samples[i].painted.append(clock.elapsed());
@@ -99,10 +111,10 @@ int main(int argc, char **argv)
         };
         QJsonArray reports;
         bool simultaneous = true, strict = true;
-        for (int i = 0; i < 2; ++i) {
+        for (int i = 0; i < cameraCount; ++i) {
             const auto &sample = samples[i];
             const QJsonObject decoded = summarize(sample.decoded), painted = summarize(sample.painted);
-            const bool resolution = !sample.wrongResolution && sample.width == 320 && sample.height == 240;
+            const bool resolution = !sample.wrongResolution && sample.width == expectedWidth && sample.height == expectedHeight;
             const bool display = resolution && painted["min_fps_after_warmup"].toInt() >= 1 && !sample.reconnect;
             const bool performance = display && painted["min_fps_after_warmup"].toInt() >= 20 &&
                                      painted["max_gap_ms_after_warmup"].toInteger() <= 150;
@@ -117,18 +129,18 @@ int main(int argc, char **argv)
         const bool connectedPassed = oneConnected
             ? reports[0].toObject()["display_passed"].toBool() && missingClosed : simultaneous;
         const QJsonObject report{{"duration_s", seconds}, {"warmup_s", warmupMs / 1000},
-            {"settings_path", settingsPath}, {"required_active_camera_count", oneConnected ? 1 : 2},
+            {"settings_path", settingsPath}, {"required_active_camera_count", oneConnected ? 1 : cameraCount},
             {"expected_missing_channel_closed", oneConnected && missingClosed},
             {"connected_camera_display_passed", connectedPassed},
             {"criteria", QJsonObject{{"functional_min_new_paints_each_second_per_camera", 1},
                 {"strict_min_new_paints_each_second_per_camera", 20}, {"strict_max_gap_ms", 150},
-                {"required_camera_count", oneConnected ? 1 : 2}, {"required_width", 320}, {"required_height", 240}}},
+                {"required_camera_count", oneConnected ? 1 : cameraCount}, {"required_width", expectedWidth}, {"required_height", expectedHeight}}},
             {"channels", reports}, {"simultaneous_display_passed", simultaneous}, {"strict_20fps_passed", strict}};
         QFile file(output);
         if (!file.open(QIODevice::WriteOnly)) { app.exit(3); return; }
         file.write(QJsonDocument(report).toJson(QJsonDocument::Indented)); file.close();
         window.grab().save(output + ".png");
-        for (auto *channel : channels) channel->close();
+        for (auto *channel : channels) if (channel) channel->close();
         app.exit(connectedPassed ? 0 : 1);
     });
     return app.exec();

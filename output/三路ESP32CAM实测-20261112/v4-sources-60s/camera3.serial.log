@@ -1,0 +1,121 @@
+[diag] IP=10.166.101.129 Heap=139216 PSRAM=3995436 Clients(UDP=0,HTTP=0) RSSI=-41 power=60 PS=0
+[net] STA MAC=48:AF:F3:6F:E8:40 mask=255.255.255.0 gateway=10.166.101.19
+[arp] 10.166.101.19 56:66:3c:67:e1:7d
+[diag] IP=10.166.101.129 Heap=139216 PSRAM=3995436 Clients(UDP=0,HTTP=0) RSSI=-41 power=60 PS=0
+[udp] 上位机接入: 10.166.101.174:51607
+[cam] 采集帧率: 0.0 fps (内部RAM 139012 字节)
+[udp-stream] UDP 推流 0.0 fps (分片 6, 失败 0, 退避 0, 内部RAM 129956 字节)
+[radio-tx] 完成=12 失败=1 内部最大连续块=90100 有限重试=0
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=5/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=99980 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-36 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 90004 字节)
+[udp-stream] UDP 推流 11.9 fps (分片 391, 失败 28, 退避 28, 内部RAM 90004 字节)
+[radio-tx] 完成=365 失败=0 内部最大连续块=47092 有限重试=86
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=86292 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-51 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 87992 字节)
+[udp-stream] UDP 推流 1.0 fps (分片 91, 失败 32, 退避 32, 内部RAM 86324 字节)
+[radio-tx] 完成=91 失败=0 内部最大连续块=45044 有限重试=100
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=86744 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-46 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 87992 字节)
+[udp-stream] UDP 推流 0.2 fps (分片 43, 失败 26, 退避 26, 内部RAM 86324 字节)
+[radio-tx] 完成=42 失败=1 内部最大连续块=42996 有限重试=79
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=86744 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-44 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 88444 字节)
+[udp-stream] UDP 推流 0.0 fps (分片 35, 失败 24, 退避 24, 内部RAM 85108 字节)
+[radio-tx] 完成=32 失败=3 内部最大连续块=42996 有限重试=75
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=97968 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-47 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 88756 字节)
+[udp-stream] UDP 推流 0.8 fps (分片 64, 失败 30, 退避 30, 内部RAM 91640 字节)
+[radio-tx] 完成=51 失败=14 内部最大连续块=47092 有限重试=96
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=90080 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-45 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 91328 字节)
+[udp-stream] UDP 推流 0.6 fps (分片 73, 失败 29, 退避 29, 内部RAM 86324 字节)
+[radio-tx] 完成=72 失败=0 内部最大连续块=40948 有限重试=97
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=92060 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-49 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 90876 字节)
+[udp-stream] UDP 推流 1.4 fps (分片 92, 失败 31, 退避 31, 内部RAM 87540 字节)
+[radio-tx] 完成=92 失败=0 内部最大连续块=45044 有限重试=101
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=5/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=90792 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-54 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 102100 字节)
+[udp-stream] UDP 推流 5.4 fps (分片 196, 失败 32, 退避 32, 内部RAM 118780 字节)
+[radio-tx] 完成=208 失败=6 内部最大连续块=55284 有限重试=102
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=5/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=87508 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-54 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 86324 字节)
+[udp-stream] UDP 推流 3.0 fps (分片 150, 失败 29, 退避 29, 内部RAM 86324 字节)
+[radio-tx] 完成=133 失败=0 内部最大连续块=42996 有限重试=97
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=1/6 ret=-1 errno=12
+[udp-err] sendto chunk=5/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=89628 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-56 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 89208 字节)
+[udp-stream] UDP 推流 0.4 fps (分片 62, 失败 30, 退避 30, 内部RAM 86324 字节)
+[radio-tx] 完成=62 失败=0 内部最大连续块=45044 有限重试=97
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=99948 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-51 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 89680 字节)
+[udp-stream] UDP 推流 8.2 fps (分片 290, 失败 28, 退避 28, 内部RAM 89972 字节)
+[radio-tx] 完成=290 失败=0 内部最大连续块=49140 有限重试=94
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[udp-err] sendto chunk=4/6 ret=-1 errno=12
+[udp-err] sendto chunk=5/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[diag] IP=10.166.101.129 Heap=109320 PSRAM=3988136 Clients(UDP=1,HTTP=0) RSSI=-50 power=60 PS=0
+[cam] 采集帧率: 27.8 fps (内部RAM 91204 字节)
+[udp-stream] UDP 推流 9.6 fps (分片 348, 失败 30, 退避 30, 内部RAM 91172 字节)
+[radio-tx] 完成=348 失败=0 内部最大连续块=51188 有限重试=95
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12

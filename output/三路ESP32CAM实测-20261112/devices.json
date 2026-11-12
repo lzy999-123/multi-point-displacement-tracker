@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "port": "COM3",
+    "ip": "10.166.101.145",
+    "sensor_pid": "3660",
+    "app_sha256": "AE9C7BB61B14B03CFD3CCEF71E05CB193F42BC009657B228093836EFF3140AA9"
+  },
+  {
+    "id": 2,
+    "port": "COM5",
+    "ip": "10.166.101.157",
+    "sensor_pid": "3660",
+    "app_sha256": "CD6D6A9D75D6A2CB1EB3F6A0E121EF50DC3495173335880FE25A429EB79F22C3"
+  },
+  {
+    "id": 3,
+    "port": "COM11",
+    "ip": "10.166.101.129",
+    "sensor_pid": "3660",
+    "app_sha256": "5BA85B35AA2B122576C63B8C616E2D2AFBC3022B7A92FBF0013A41E3C4F83399"
+  }
+]

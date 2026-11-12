@@ -58,6 +58,13 @@ class Vid1Test(unittest.TestCase):
         self.assertTrue(summarize(frames, 4, 2, 20, 150, 0)['passed'])
         self.assertFalse(summarize(frames, 4, 2, 20, 150, 1)['passed'])
 
+    def test_requested_vga_checks_every_decoded_frame(self):
+        frames = [dict(time_s=i / 25 + .001, width=640, height=480) for i in range(100)]
+        self.assertTrue(summarize(frames, 4, 2, 20, 150, 0, 640, 480)['passed'])
+        self.assertFalse(summarize(frames, 4, 2, 20, 150, 0)['passed'])
+        frames[75]['width'] = 320
+        self.assertFalse(summarize(frames, 4, 2, 20, 150, 0, 640, 480)['passed'])
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -108,9 +108,19 @@ void CameraWifiSession::poll()
     }
     if (!s.announced) {
         bool addressReady = s.profile.isEmpty();
-        for (const auto &ip : QNetworkInterface::allAddresses())
-            addressReady |= ip.protocol() == QAbstractSocket::IPv4Protocol &&
-                            ip.isInSubnet(QHostAddress("192.168.4.0"), 24);
+        // 手机热点的 DHCP 网段会变化，不能只接受相机 AP 的 192.168.4.x。
+        // 只检查已运行的无线接口，排除 VPN、回环和 DHCP 尚未完成时的链路本地地址。
+        for (const auto &iface : QNetworkInterface::allInterfaces()) {
+            if (iface.type() != QNetworkInterface::Wifi ||
+                !(iface.flags() & QNetworkInterface::IsUp) ||
+                !(iface.flags() & QNetworkInterface::IsRunning)) continue;
+            for (const auto &entry : iface.addressEntries()) {
+                const auto ip = entry.ip();
+                addressReady |= ip.protocol() == QAbstractSocket::IPv4Protocol &&
+                                !ip.isNull() && !ip.isLoopback() &&
+                                !ip.isInSubnet(QHostAddress("169.254.0.0"), 16);
+            }
+        }
         if (addressReady) { s.announced = true; emit ready(); }
     }
 }

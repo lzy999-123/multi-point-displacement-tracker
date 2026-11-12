@@ -1,0 +1,28 @@
+ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x12 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0030,len:4640
+load:0x40078000,len:15632
+load:0x40080400,len:3164
+entry 0x4008059c
+
+[boot] 位移跟踪相机 #2 vga-paced-tx-v5 Nov 12 2026 20:47:37
+[wifi] Arduino 原生初始化，TX统计回调 result=0
+[wifi] 连接 Redmi K70E....
+[wifi-event] 已关联 AP
+..
+[wifi-event] 获取到 IP: 10.166.101.157
+.
+[wifi] 已连接 STA，IP 10.166.101.157，RSSI -39 dBm
+[wifi] auth=3 pairwise=4 group=4 channel=13
+[cam] 传感器 PID=0x3660，硬件 JPEG，PSRAM=4194304，XCLK=20000000
+[http] 端口 81 就绪
+[discovery] 广播发现 UDP 39093, 视频流 UDP 5006
+[udp-stream] 监听端口 5006 (Core 0 运行，与 Wi-Fi 协议栈同核)
+[udp-stream] IP_TOS=0x0 result=0
+[diag] IP=10.166.101.157 Heap=139216 PSRAM=3995436 Clients(UDP=0,HTTP=0) RSSI=-33 power=59 PS=0
+[net] STA MAC=7C:D5:44:33:39:9C mask=255.255.255.0 gateway=10.166.101.19
+[arp] 10.166.101.19 56:66:3c:67:e1:7d

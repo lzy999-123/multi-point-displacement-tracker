@@ -37,6 +37,10 @@ int main(int argc, char **argv)
             serialLog.write(bytes); serialLog.flush();
         });
     MainWindow window;
+    // A single-camera test must have only one receiver. Discovery could otherwise
+    // open the same camera in its device-ID channel and steal its UDP destination.
+    for (int index = 1; index < MainWindow::kChannelCount; ++index)
+        window.setChannelUnavailable(index, QStringLiteral("本次仅测试通道 1"));
     // 验收窗口保持可见，避免被其他窗口遮挡后 Windows 暂停绘制造成假卡顿。
     window.setWindowFlag(Qt::WindowStaysOnTopHint);
     const auto channels = window.findChildren<Channel *>();

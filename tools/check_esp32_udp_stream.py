@@ -14,7 +14,7 @@ import numpy as np
 from vid1 import Assembler
 
 
-def summarize(frames, duration, warmup, min_fps, max_gap_ms, decode_errors):
+def summarize(frames, duration, warmup, min_fps, max_gap_ms, decode_errors, width=320, height=240):
     frames = [f for f in frames if 0 <= f['time_s'] < duration]
     bins = [0] * int(duration)
     for frame in frames:
@@ -28,7 +28,7 @@ def summarize(frames, duration, warmup, min_fps, max_gap_ms, decode_errors):
     starts.extend(t for t in times if t <= duration - 1)
     rolling_min = min(bisect_right(times, t + 1) - bisect_right(times, t) for t in starts)
     minimum = min(bins[warmup:], default=0)
-    wrong_resolution = sum((f['width'], f['height']) != (320, 240) for f in frames)
+    wrong_resolution = sum((f['width'], f['height']) != (width, height) for f in frames)
     passed = (bool(frames) and minimum >= min_fps and rolling_min >= min_fps
               and max_gap <= max_gap_ms and decode_errors == 0 and wrong_resolution == 0)
     return dict(total_frames=len(frames), average_fps=round(len(frames) / duration, 2),
@@ -42,13 +42,16 @@ def main():
     parser.add_argument('target', help='Camera IPv4:port')
     parser.add_argument('--duration', type=float, default=30)
     parser.add_argument('--warmup', type=int, default=2)
+    parser.add_argument('--width', type=int, default=320)
+    parser.add_argument('--height', type=int, default=240)
     parser.add_argument('--min-fps', type=int, default=20)
     parser.add_argument('--max-gap-ms', type=float, default=150)
     parser.add_argument('--output', type=Path, default=Path('tmp/udp-check'))
     parser.add_argument('--firmware-manifest', type=Path)
     args = parser.parse_args()
     if (not math.isfinite(args.duration) or args.warmup < 0 or args.duration < args.warmup + 1
-            or args.min_fps < 1 or not math.isfinite(args.max_gap_ms) or args.max_gap_ms <= 0):
+            or args.width < 1 or args.height < 1 or args.min_fps < 1
+            or not math.isfinite(args.max_gap_ms) or args.max_gap_ms <= 0):
         parser.error('duration must cover warmup + 1s; fps and gap must be positive')
     try:
         host, separator, port_text = args.target.partition(':')
@@ -141,7 +144,7 @@ def main():
             last_jpeg = jpeg
 
     summary = summarize(frames, args.duration, args.warmup, args.min_fps,
-                        args.max_gap_ms, decode_errors)
+                        args.max_gap_ms, decode_errors, args.width, args.height)
     summary.update(duration_s=args.duration, elapsed_s=round(time.monotonic()-start, 3),
                    target=f'{host}:{port}', local_ip=local_ip,
                    measured_at=datetime.now().astimezone().isoformat(),
@@ -149,7 +152,7 @@ def main():
                    invalid_packets=assembler.invalid_packets,
                    duplicate_or_old_packets=assembler.duplicate_or_old_packets,
                    recovery_resets=resets, acceptance_scope='decoded UDP frames; not Qt display',
-                   criteria=dict(width=320, height=240, warmup_s=args.warmup,
+                   criteria=dict(width=args.width, height=args.height, warmup_s=args.warmup,
                                  min_fps=args.min_fps, max_gap_ms=args.max_gap_ms),
                    tool_sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                                 for p in (Path(__file__), Path(__file__).with_name('vid1.py'))})

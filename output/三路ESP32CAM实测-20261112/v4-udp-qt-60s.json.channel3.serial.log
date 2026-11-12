@@ -1,0 +1,68 @@
+[udp] 上位机接入: 10.166.101.174:57532
+[udp-stream] UDP 推流 2.1 fps (分片 330, 失败 23, 退避 23, 内部RAM 129356 字节)
+[radio-tx] 完成=370 失败=0 内部最大连续块=90100 有限重试=90
+[cam] 采集帧率: 5.9 fps (内部RAM 129264 字节)
+[udp-err] sendto chunk=5/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 136676 字节)
+[udp-stream] UDP 推流 21.1 fps (分片 643, 失败 3, 退避 3, 内部RAM 129552 字节)
+[radio-tx] 完成=644 失败=0 内部最大连续块=90100 有限重试=9
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 128808 字节)
+[udp-stream] UDP 推流 21.5 fps (分片 652, 失败 3, 退避 3, 内部RAM 120016 字节)
+[radio-tx] 完成=646 失败=0 内部最大连续块=77812 有限重试=12
+[udp-err] sendto chunk=5/10 ret=-1 errno=12
+[udp-err] sendto chunk=0/9 ret=-1 errno=12
+[udp-err] sendto chunk=0/10 ret=-1 errno=12
+[udp-err] sendto chunk=0/10 ret=-1 errno=12
+[udp-err] sendto chunk=3/12 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 102236 字节)
+[udp-stream] UDP 推流 18.8 fps (分片 885, 失败 8, 退避 8, 内部RAM 102712 字节)
+[radio-tx] 完成=876 失败=0 内部最大连续块=55284 有限重试=24
+[udp-err] sendto chunk=9/11 ret=-1 errno=12
+[udp-err] sendto chunk=3/12 ret=-1 errno=12
+[udp-err] sendto chunk=8/12 ret=-1 errno=12
+[udp-err] sendto chunk=0/13 ret=-1 errno=12
+[udp-err] sendto chunk=7/12 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 128220 字节)
+[udp-stream] UDP 推流 18.9 fps (分片 1142, 失败 8, 退避 11, 内部RAM 124772 字节)
+[radio-tx] 完成=1158 失败=0 内部最大连续块=53236 有限重试=25
+[cam] 采集帧率: 27.8 fps (内部RAM 122816 字节)
+[udp-stream] UDP 推流 22.3 fps (分片 768, 失败 0, 退避 0, 内部RAM 129488 字节)
+[radio-tx] 完成=771 失败=0 内部最大连续块=90100 有限重试=0
+[cam] 采集帧率: 27.8 fps (内部RAM 127592 字节)
+[udp-stream] UDP 推流 20.9 fps (分片 781, 失败 0, 退避 3, 内部RAM 107852 字节)
+[radio-tx] 完成=770 失败=0 内部最大连续块=65524 有限重试=0
+[udp-err] sendto chunk=6/11 ret=-1 errno=12
+[udp-err] sendto chunk=5/11 ret=-1 errno=12
+[udp-err] sendto chunk=0/12 ret=-1 errno=12
+[udp-err] sendto chunk=0/11 ret=-1 errno=12
+[udp-err] sendto chunk=0/11 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 122960 字节)
+[udp-stream] UDP 推流 14.1 fps (分片 788, 失败 23, 退避 23, 内部RAM 103808 字节)
+[radio-tx] 完成=785 失败=0 内部最大连续块=47092 有限重试=71
+[udp-err] sendto chunk=0/10 ret=-1 errno=12
+[udp-err] sendto chunk=9/11 ret=-1 errno=12
+[udp-err] sendto chunk=12/13 ret=-1 errno=11
+[udp-err] sendto chunk=1/13 ret=-1 errno=12
+[udp-err] sendto chunk=0/12 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 119996 字节)
+[udp-stream] UDP 推流 18.1 fps (分片 941, 失败 11, 退避 11, 内部RAM 118660 字节)
+[radio-tx] 完成=952 失败=0 内部最大连续块=77812 有限重试=31
+[cam] 采集帧率: 27.8 fps (内部RAM 130996 字节)
+[udp-stream] UDP 推流 22.3 fps (分片 982, 失败 0, 退避 0, 内部RAM 115336 字节)
+[radio-tx] 完成=979 失败=0 内部最大连续块=73716 有限重试=0
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=3/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
+[cam] 采集帧率: 27.8 fps (内部RAM 131092 字节)
+[udp-stream] UDP 推流 21.5 fps (分片 653, 失败 3, 退避 3, 内部RAM 115016 字节)
+[radio-tx] 完成=656 失败=0 内部最大连续块=73716 有限重试=9
+[cam] 采集帧率: 27.8 fps (内部RAM 136680 字节)
+[udp-stream] UDP 推流 22.2 fps (分片 672, 失败 0, 退避 0, 内部RAM 132764 字节)
+[radio-tx] 完成=685 失败=0 内部最大连续块=94196 有限重试=0
+[udp-err] sendto chunk=2/6 ret=-1 errno=12
+[udp-err] sendto chunk=0/6 ret=-1 errno=12
