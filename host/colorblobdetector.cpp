@@ -44,7 +44,8 @@ QList<Detection> ColorBlobDetector::detect(const cv::Mat &bgr)
     cv::morphologyEx(m_mask, m_mask, cv::MORPH_CLOSE, kernel);
 
     std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(m_mask.clone(), contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    // OpenCV >= 3.2 保留输入掩膜，可直接供显示使用。
+    cv::findContours(m_mask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
     for (const auto &contour : contours) {
         const cv::Moments m = cv::moments(contour);
@@ -54,9 +55,22 @@ QList<Detection> ColorBlobDetector::detect(const cv::Mat &bgr)
         d.area = m.m00;
         d.center = cv::Point2d(m.m10 / m.m00, m.m01 / m.m00);
         d.box = cv::boundingRect(contour);
+        d.rotBox = cv::minAreaRect(contour);
+        d.aspectRatio = static_cast<double>(d.box.height) / std::max(1, d.box.width);
+
+        // 二阶中心矩计算主惯性轴方向角
+        const double mu20 = m.mu20 / m.m00;
+        const double mu02 = m.mu02 / m.m00;
+        const double mu11 = m.mu11 / m.m00;
+        const double rad = 0.5 * std::atan2(2.0 * mu11, mu20 - mu02);
+        d.angle = rad * (180.0 / kPi);
+        const double trace = mu20 + mu02;
+        d.angleReliable = trace > 0.0 && std::hypot(mu20 - mu02, 2.0 * mu11) / trace >= 0.20;
+
         // 轮廓面积 / 外接矩形面积：越接近 1 越"实"，用作简单的可信度
         const double boxArea = std::max(1, d.box.area());
         d.score = std::min(1.0, d.area / boxArea);
+        d.valid = true;
         result.append(d);
     }
 

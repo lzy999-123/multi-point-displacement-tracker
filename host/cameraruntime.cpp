@@ -4,6 +4,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QSerialPortInfo>
+#include <QtConcurrent/QtConcurrentRun>
 #include "cameraserialsession.h"
 #include "camerawifisession.h"
 
@@ -39,25 +40,49 @@ CameraRuntime::CameraRuntime(const QString &settingsPath, bool configuredStreams
         refreshStreams(true);
     });
     m_presenceTimer.setInterval(1000);
-    connect(&m_presenceTimer, &QTimer::timeout, this, [this] { refreshStreams(); });
+    connect(&m_presenceTimer, &QTimer::timeout, this, &CameraRuntime::scanPorts);
+    connect(&m_portScan, &QFutureWatcher<QSet<QString>>::finished, this, [this] {
+        m_presentPorts = m_portScan.result();
+        m_presenceKnown = true;
+        refreshStreams();
+    });
 }
 
 void CameraRuntime::start()
 {
-    refreshStreams();
+    scanPorts();
     m_presenceTimer.start();
     m_wifi->start();
+}
+
+void CameraRuntime::scanPorts()
+{
+    if (!m_configuredStreams) return;
+    bool needsPorts = false;
+    for (const auto &stream : m_streams) needsPorts |= !stream.serialPort.isEmpty();
+    if (!needsPorts) {
+        m_presenceKnown = true;
+        refreshStreams();
+        return;
+    }
+    if (m_portScan.isRunning()) return;
+    // Windows device enumeration can block for tens or hundreds of milliseconds.
+    // A periodic presence check must not pause all three video widgets.
+    m_portScan.setFuture(QtConcurrent::run([] {
+        QSet<QString> present;
+        for (const auto &port : QSerialPortInfo::availablePorts())
+            if (port.vendorIdentifier() == 0x1a86 && port.productIdentifier() == 0x7523)
+                present.insert(port.portName().toUpper());
+        return present;
+    }));
 }
 
 void CameraRuntime::refreshStreams(bool reconnect)
 {
     if (!m_configuredStreams) return;
-    QSet<QString> present;
-    for (const auto &port : QSerialPortInfo::availablePorts())
-        if (port.vendorIdentifier() == 0x1a86 && port.productIdentifier() == 0x7523)
-            present.insert(port.portName().toUpper());
     for (auto &stream : m_streams) {
-        if (!stream.serialPort.isEmpty() && !present.contains(stream.serialPort.toUpper())) {
+        if (!stream.serialPort.isEmpty() && !m_presenceKnown) continue;
+        if (!stream.serialPort.isEmpty() && !m_presentPorts.contains(stream.serialPort.toUpper())) {
             if (stream.active || !stream.missingAnnounced)
                 emit streamUnavailable(stream.index, tr("设备已断开（%1）").arg(stream.serialPort));
             stream.active = false;

@@ -1,37 +1,70 @@
 #include "mainwindow.h"
 
+#include <QApplication>
 #include <QCheckBox>
+#include <QButtonGroup>
 #include <QComboBox>
+#include <QDateTime>
+#include <QDir>
+#include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSettings>
-#include <QCoreApplication>
-#include <QSlider>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QToolBar>
 #include <QVBoxLayout>
 
-#include "videowidget.h"
 #include "cameraconfigpath.h"
+#include "videowidget.h"
+#include "videoprofile.h"
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
+MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
+    : QMainWindow(parent), m_settingsPath(settingsPath.isEmpty() ? cameraSettingsPath() : settingsPath)
 {
-    setWindowTitle(tr("多监测点位移跟踪系统"));
-    resize(1280, 860);
+    QSettings settings(m_settingsPath, QSettings::IniFormat);
+    const QString savedProfile = settings.value(QStringLiteral("video/profile")).toString();
+    m_videoProfile = savedProfile == QStringLiteral("svga") ? VideoProfile::Svga
+        : savedProfile == QStringLiteral("vga12") ? VideoProfile::Vga12 : VideoProfile::Qvga25;
+    settings.setValue(QStringLiteral("video/profile"), videoProfileKey(m_videoProfile));
+    setWindowTitle(tr("三视角固定机位藏品异动监测（ESP32 无线图传）"));
 
-    auto *toolbar = addToolBar(tr("设备"));
+    auto *toolbar = addToolBar(tr("设备与控制"));
     toolbar->setMovable(false);
     m_discoveryButton = new QPushButton(tr("停止查找"), this);
     m_discoveryStatus = new QLabel(tr("正在查找设备…"), this);
     toolbar->addWidget(m_discoveryButton);
     toolbar->addSeparator();
     toolbar->addWidget(m_discoveryStatus);
+    toolbar->addSeparator();
+    auto *profiles = new QButtonGroup(this);
+    for (const auto profile : {VideoProfile::Qvga25, VideoProfile::Vga12, VideoProfile::Svga}) {
+        const auto preset = VideoProfile::preset(profile);
+        auto *button = new QPushButton(tr("%1×%2").arg(preset.width).arg(preset.height), this);
+        button->setToolTip(videoProfileCadence(profile));
+        button->setObjectName(QStringLiteral("profile-") + videoProfileKey(profile));
+        button->setCheckable(true);
+        button->setChecked(profile == m_videoProfile);
+        profiles->addButton(button, profile);
+        toolbar->addWidget(button);
+        connect(button, &QPushButton::clicked, this, [this, profile] { setVideoProfile(profile); });
+    }
+    const auto startupPreset = VideoProfile::preset(unsigned(m_videoProfile));
+    m_profileLabel = new QLabel(tr("UDP：%1×%2 · %3")
+        .arg(startupPreset.width).arg(startupPreset.height).arg(videoProfileCadence(m_videoProfile)), this);
+    m_profileLabel->setObjectName(QStringLiteral("video-profile"));
+    m_profileLabel->setToolTip(tr("同时切换三路相机；实际接收和显示速度由采集与网络决定"));
+    toolbar->addWidget(m_profileLabel);
+
     connect(m_discoveryButton, &QPushButton::clicked, this, [this] {
         if (m_discovery.isRunning()) {
             m_discovery.stop();
@@ -48,45 +81,93 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     auto *grid = new QGridLayout(central);
     grid->setContentsMargins(6, 6, 6, 6);
     grid->setSpacing(6);
-    for (int i = 0; i < kChannelCount; ++i)
+    for (int i = 0; i < kChannelCount; ++i) {
         grid->addWidget(buildChannelPanel(i), i / 2, i % 2);
-    grid->addWidget(buildParamPanel(), 1, 1);
-    grid->setRowStretch(0, 1);
-    grid->setRowStretch(1, 1);
-    grid->setColumnStretch(0, 1);
-    grid->setColumnStretch(1, 1);
+    }
+    grid->addWidget(buildMonitorDashboard(), 1, 1);
+    grid->setSizeConstraint(QLayout::SetFixedSize);
     setCentralWidget(central);
 
     qRegisterMetaType<DeviceDiscovery::Device>();
     connect(&m_discovery, &DeviceDiscovery::deviceFound, this, &MainWindow::onDeviceFound);
+    // 读取上次发现记录的 IP 作为单播探测提示（不跳过 ID 核对，不依赖 COM 口号）
+    for (int i = 0; i < kChannelCount; ++i) {
+        const QString group = (i == 0 ? QStringLiteral("camera") : QStringLiteral("camera%1").arg(i + 1));
+        QHostAddress hint(settings.value(group + QStringLiteral("/lastIp")).toString().trimmed());
+        if (hint.isNull()) {
+            const QUrl oldUrl(settings.value(group + QStringLiteral("/url")).toString().trimmed());
+            if (oldUrl.isValid()) hint = QHostAddress(oldUrl.host());
+        }
+        if (hint.protocol() == QAbstractSocket::IPv4Protocol && !hint.isNull())
+            m_discovery.setTarget(i + 1, hint);
+    }
     m_discovery.start();
-    statusBar()->showMessage(tr("点击画面中的色块可自动取色"));
+
+    // 默认应用门限
+    applyMonitorThresholds();
+    m_monitorTimer.setInterval(100);
+    connect(&m_monitorTimer, &QTimer::timeout, this, &MainWindow::updateFusionDecision);
+    m_monitorTimer.start();
+    updateFusionDecision();
+    statusBar()->showMessage(tr("操作顺序：连接三路 ESP32 无线画面 → 拖拽框选（或点击）目标 → 锁定基准开始监测"));
+    appendLog(tr("三视角藏品异动监测就绪（仅接收 ESP32 无线 UDP 图传）：拖拽框选或点击目标后锁定基准。"));
+    setFixedSize(sizeHint());
 }
 
 MainWindow::~MainWindow() = default;
 
+void MainWindow::setVideoProfile(int profile)
+{
+    if (!VideoProfile::valid(unsigned(profile)) || profile == m_videoProfile) return;
+    m_videoProfile = profile;
+    for (const auto candidate : {VideoProfile::Vga12, VideoProfile::Qvga25, VideoProfile::Svga})
+        if (auto *button = findChild<QPushButton *>(QStringLiteral("profile-") + videoProfileKey(candidate)))
+            button->setChecked(candidate == profile);
+    const auto profilePreset = VideoProfile::preset(unsigned(profile));
+    m_profileLabel->setText(tr("UDP：%1×%2 · %3 · JPEG质量%4～%5")
+        .arg(profilePreset.width).arg(profilePreset.height).arg(videoProfileCadence(profile))
+        .arg(profilePreset.minimumQuality).arg(profilePreset.maximumQuality));
+    QSettings settings(m_settingsPath, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("video/profile"), videoProfileKey(profile));
+    resetAllBaselines();
+    for (int i = 0; i < kChannelCount; ++i) {
+        auto &ui = m_channels[i];
+        ui.video->clear();
+        if (ui.channel->isOpen())
+            openChannel(i, withVideoProfile(ui.channel->url(), profile));
+    }
+    const auto preset = VideoProfile::preset(unsigned(profile));
+    appendLog(tr("切换全部机位至 %1×%2 / %3（UDP），请重新锁定基准")
+                  .arg(preset.width).arg(preset.height).arg(videoProfileCadence(profile)));
+    statusBar()->showMessage(tr("正在切换相机分辨率；画面恢复后请重新锁定基准"), 6000);
+}
+
 QWidget *MainWindow::buildChannelPanel(int index)
 {
     ChannelUi &ui = m_channels[index];
-    auto *box = new QGroupBox(tr("监测点 %1").arg(index + 1), this);
+    auto *box = new QGroupBox(tr("监测机位 %1（ESP32 无线）").arg(index + 1), this);
+    ui.panelBox = box;
+    box->setFixedSize(560, 418);
     auto *layout = new QVBoxLayout(box);
-    layout->setContentsMargins(4, 4, 4, 4);
+    layout->setContentsMargins(6, 4, 6, 6);
+    layout->setSpacing(4);
 
     ui.channel = new Channel(index + 1, this);
-    ui.video = new VideoWidget(tr("通道 %1").arg(index + 1), box);
+    ui.channel->setDetectorMode(ChannelWorker::AutoContour);
+    ui.video = new VideoWidget(tr("机位 %1 视角").arg(index + 1), box);
     ui.video->setObjectName(QStringLiteral("video-%1").arg(index + 1));
     ui.video->setStatus(tr("未连接"));
-    layout->addWidget(ui.video, 1);
+    layout->addWidget(ui.video, 0, Qt::AlignHCenter);
 
     auto *row = new QHBoxLayout;
-    ui.urlEdit = new QLineEdit(box);
-    ui.urlEdit->setPlaceholderText(tr("http://IP:81/stream（自动发现后填入）"));
-    ui.connectButton = new QPushButton(tr("连接"), box);
+    row->setContentsMargins(34, 0, 34, 0);
+    row->setSpacing(10);
+
     auto *rotate = new QCheckBox(tr("旋转180°"), box);
     rotate->setObjectName(QStringLiteral("rotate180-%1").arg(index + 1));
     const QString rotationKey = (index == 0 ? QStringLiteral("camera")
-                                           : QStringLiteral("camera%1").arg(index + 1)) + "/rotate180";
-    const QString settingsPath = cameraSettingsPath();
+                                            : QStringLiteral("camera%1").arg(index + 1)) + "/rotate180";
+    const QString settingsPath = m_settingsPath;
     QSettings settings(settingsPath, QSettings::IniFormat);
     rotate->setChecked(settings.value(rotationKey, false).toBool());
     ui.video->setRotate180(rotate->isChecked());
@@ -95,170 +176,601 @@ QWidget *MainWindow::buildChannelPanel(int index)
         QSettings saved(settingsPath, QSettings::IniFormat);
         saved.setValue(rotationKey, checked);
     });
-    row->addWidget(ui.urlEdit, 1);
+
+    ui.calibrateButton = new QPushButton(tr("📷 标定"), box);
+    ui.calibrateButton->setToolTip(tr("将当前机位画面目标锁定为基准形态"));
+    connect(ui.calibrateButton, &QPushButton::clicked, this, [this, index] {
+        calibrateSingleChannel(index);
+    });
+
+    ui.connectButton = new QPushButton(tr("连接"), box);
+
     row->addWidget(rotate);
+    row->addStretch(1);
+    row->addWidget(ui.calibrateButton);
     row->addWidget(ui.connectButton);
     layout->addLayout(row);
 
-    ui.channel->setParams(ui.params);
     connect(ui.connectButton, &QPushButton::clicked, this, [this, index] { toggleChannel(index); });
-    connect(ui.urlEdit, &QLineEdit::returnPressed, this, [this, index] {
-        if (!m_channels[index].channel->isOpen())
-            toggleChannel(index);
-    });
+
     connect(ui.channel, &Channel::resultReady, this, [this, index](const ChannelResult &r) {
-        if (m_channels[index].channel->isOpen()) m_channels[index].video->setResult(r);
+        const auto preset = VideoProfile::preset(unsigned(m_videoProfile));
+        const qint64 age = monitorNowMs() - r.observedAtMs;
+        if (m_channels[index].channel->isOpen() && r.revision == m_channels[index].channel->revision()
+            && r.observedAtMs >= 0 && age >= 0 && age <= kMonitorFreshnessMs
+            && r.image.size() == QSize(preset.width, preset.height)) {
+            auto &ui = m_channels[index];
+            ui.video->setResult(r);
+            ui.lastAnomaly = r.anomaly;
+            ui.hasTarget = r.hasTarget;
+            ui.baselineSet = r.baselineCalibrated;
+            ui.observedAtMs = r.observedAtMs;
+            ui.streamAvailable = true;
+            ui.lastFps = r.fps;
+            ui.lastImageSize = r.image.size();
+            if (ui.panelBox) {
+                ui.panelBox->setTitle(tr("监测机位 %1（ESP32 无线 · %2×%3 · %4 fps）")
+                                          .arg(index + 1)
+                                          .arg(r.image.width()).arg(r.image.height())
+                                          .arg(r.fps, 0, 'f', 1));
+            }
+            updateFusionDecision();
+        }
         m_channels[index].channel->acknowledgeResult();
     });
+
     connect(ui.channel, &Channel::stateChanged, this,
             [this, index](MjpegStream::State s, const QString &d) { onStateChanged(index, s, d); });
-    connect(ui.channel, &Channel::colorPicked, this, [this, index](const ColorParams &p) {
-        m_channels[index].params = p;
-        selectParamChannel(index);
-        if (m_applyAll->isChecked())
-            applyUiParams();
-        statusBar()->showMessage(tr("通道 %1 已取色：H %2～%3").arg(index + 1).arg(p.hMin).arg(p.hMax), 4000);
+    connect(ui.channel, &Channel::activeStreamChanged, this, [this, index](const QUrl &url) {
+        m_channels[index].lastUrl = url;
     });
-    connect(ui.video, &VideoWidget::imageClicked, this,
-            [this, index](int x, int y) { m_channels[index].channel->pickColor(x, y); });
+    connect(ui.channel, &Channel::videoProfileApplied, this, [this, index](int profile) {
+        if (profile != m_videoProfile) return;
+        const auto preset = VideoProfile::preset(unsigned(profile));
+        appendLog(tr("机位 %1 已确认：%2×%3，%4，UDP")
+                      .arg(index + 1).arg(preset.width).arg(preset.height).arg(videoProfileCadence(profile)));
+    });
+    connect(ui.channel, &Channel::calibrationFinished, this,
+            [this, index](quint64 revision, bool success, const QString &reason) {
+        if (revision != m_channels[index].channel->revision()) return;
+        appendLog(tr("机位 %1 基准%2：%3").arg(index + 1)
+                      .arg(success ? tr("锁定完成") : tr("未锁定")).arg(reason));
+        statusBar()->showMessage(reason, 4000);
+    });
+
+    connect(ui.video, &VideoWidget::imageClicked, this, [this, index](int x, int y) {
+        auto &ui = m_channels[index];
+        if (!ui.streamAvailable || ui.observedAtMs < 0
+            || monitorNowMs() - ui.observedAtMs > kMonitorFreshnessMs) {
+            statusBar()->showMessage(tr("画面已过期，请等待新画面再选择目标"), 3000);
+            return;
+        }
+        ui.baselineSet = false;
+        ui.lastAnomaly = {};
+        ui.video->setMonitoringUnavailable(tr("正在重新选目标，请重新锁定基准"));
+        m_channels[index].channel->pickTarget(x, y);
+        updateFusionDecision();
+        statusBar()->showMessage(tr("机位 %1：已发送点选 (%2, %3)，看到目标框后再锁定基准")
+                                    .arg(index + 1).arg(x).arg(y), 4000);
+    });
+
+    connect(ui.video, &VideoWidget::roiSelected, this, [this, index](const QRect &roi) {
+        auto &ui = m_channels[index];
+        if (!ui.streamAvailable || ui.observedAtMs < 0
+            || monitorNowMs() - ui.observedAtMs > kMonitorFreshnessMs) {
+            statusBar()->showMessage(tr("画面已过期，请等待新画面再框选目标"), 3000);
+            return;
+        }
+        ui.baselineSet = false;
+        ui.lastAnomaly = {};
+        ui.video->setMonitoringUnavailable(tr("已框选目标，请点击【标定】锁定基准"));
+        m_channels[index].channel->selectTargetRoi(roi);
+        updateFusionDecision();
+        appendLog(tr("机位 %1 已框选目标区域 (%2, %3, %4×%5)，等待锁定基准")
+                      .arg(index + 1).arg(roi.x()).arg(roi.y()).arg(roi.width()).arg(roi.height()));
+        statusBar()->showMessage(tr("机位 %1：已框选目标 (%2×%3)，请点击【标定】或【一键锁定基准】")
+                                    .arg(index + 1).arg(roi.width()).arg(roi.height()), 5000);
+    });
+
     return box;
 }
 
-QWidget *MainWindow::buildParamPanel()
+QWidget *MainWindow::buildMonitorDashboard()
 {
-    auto *box = new QGroupBox(tr("色块参数"), this);
-    auto *form = new QFormLayout(box);
+    auto *box = new QGroupBox(tr("藏品监测状态与控制"), this);
+    box->setFixedSize(560, 418);
+    auto *rootLayout = new QVBoxLayout(box);
+    rootLayout->setContentsMargins(6, 4, 6, 6);
+    rootLayout->setSpacing(4);
 
-    m_paramChannel = new QComboBox(box);
-    for (int i = 0; i < kChannelCount; ++i)
-        m_paramChannel->addItem(tr("监测点 %1").arg(i + 1));
-    form->addRow(tr("调整对象"), m_paramChannel);
+    auto *tabs = new QTabWidget(box);
+    rootLayout->addWidget(tabs);
 
-    auto makeSlider = [&](const QString &label, int max) {
-        auto *slider = new QSlider(Qt::Horizontal, box);
-        slider->setRange(0, max);
-        auto *value = new QLabel(box);
-        value->setMinimumWidth(30);
-        auto *row = new QHBoxLayout;
-        row->addWidget(slider, 1);
-        row->addWidget(value);
-        form->addRow(label, row);
-        connect(slider, &QSlider::valueChanged, this, [this, value](int v) {
-            value->setNum(v);
-            applyUiParams();
-        });
-        return slider;
-    };
-    m_hMin = makeSlider(tr("H 下限"), 179);
-    m_hMax = makeSlider(tr("H 上限"), 179);
-    m_sMin = makeSlider(tr("S 下限"), 255);
-    m_sMax = makeSlider(tr("S 上限"), 255);
-    m_vMin = makeSlider(tr("V 下限"), 255);
-    m_vMax = makeSlider(tr("V 上限"), 255);
+    // ==================== 标签 1：实时监控（简洁主视窗） ====================
+    auto *monitorTab = new QWidget(tabs);
+    auto *monLayout = new QVBoxLayout(monitorTab);
+    monLayout->setContentsMargins(6, 6, 6, 6);
+    monLayout->setSpacing(6);
 
-    m_minArea = new QSpinBox(box);
-    m_minArea->setRange(10, 100000);
-    m_minArea->setSingleStep(50);
-    m_minArea->setSuffix(tr(" 像素"));
-    form->addRow(tr("最小面积"), m_minArea);
-    connect(m_minArea, &QSpinBox::valueChanged, this, [this] { applyUiParams(); });
+    // 1. 总览状态横幅
+    m_lblFusionStatus = new QLabel(tr("⚪ 系统待命：请框选目标并锁定基准"), monitorTab);
+    m_lblFusionStatus->setObjectName(QStringLiteral("fusion-status"));
+    m_lblFusionStatus->setWordWrap(true);
+    m_lblFusionStatus->setFixedHeight(44);
+    m_lblFusionStatus->setAlignment(Qt::AlignCenter);
+    m_lblFusionStatus->setStyleSheet(QStringLiteral(
+        "background-color: #546e7a; color: #ffffff; font-weight: bold; font-size: 10.5pt; padding: 4px 8px; border-radius: 5px;"));
+    monLayout->addWidget(m_lblFusionStatus);
 
-    auto *presets = new QHBoxLayout;
-    struct Preset { const char *name; int hMin, hMax; };
-    const Preset list[] = {{"红", 170, 10}, {"黄", 20, 35}, {"绿", 40, 80}, {"蓝", 100, 130}};
-    for (const Preset &p : list) {
-        auto *button = new QPushButton(tr(p.name), box);
-        button->setMaximumWidth(48);
-        presets->addWidget(button);
-        const int hMin = p.hMin, hMax = p.hMax;
-        connect(button, &QPushButton::clicked, this, [this, hMin, hMax] { applyPreset(hMin, hMax); });
+    m_lblFusionDetail = new QLabel(tr("三路固定机位就绪"), monitorTab);
+    m_lblFusionDetail->setObjectName(QStringLiteral("fusion-detail"));
+    m_lblFusionDetail->setVisible(false);
+
+    // 2. 三路机位独立状态卡片（替代画面内的遮挡黑框）
+    auto *cardsLayout = new QVBoxLayout;
+    cardsLayout->setSpacing(4);
+    for (int i = 0; i < kChannelCount; ++i) {
+        auto *card = new QWidget(monitorTab);
+        card->setFixedHeight(34);
+        card->setStyleSheet(QStringLiteral(
+            "QWidget { background-color: #f3f5f8; border: 1px solid #dce2ea; border-radius: 4px; }"));
+        auto *row = new QHBoxLayout(card);
+        row->setContentsMargins(8, 3, 8, 3);
+        row->setSpacing(8);
+
+        auto *nameLbl = new QLabel(tr("机位 %1").arg(i + 1), card);
+        nameLbl->setFixedWidth(44);
+        nameLbl->setStyleSheet(QStringLiteral("border: none; background: transparent; font-weight: bold; color: #263238;"));
+
+        auto *badge = new QLabel(tr("未连接"), card);
+        badge->setFixedSize(96, 22);
+        badge->setAlignment(Qt::AlignCenter);
+        badge->setStyleSheet(QStringLiteral(
+            "border: none; background-color: #78909c; color: white; font-weight: bold; font-size: 8.5pt; border-radius: 3px;"));
+
+        auto *detail = new QLabel(tr("等待 ESP32 无线连接…"), card);
+        detail->setStyleSheet(QStringLiteral("border: none; background: transparent; color: #37474f; font-size: 9pt;"));
+
+        row->addWidget(nameLbl);
+        row->addWidget(badge);
+        row->addWidget(detail, 1);
+        cardsLayout->addWidget(card);
+
+        m_channels[i].cardBadge = badge;
+        m_channels[i].cardDetail = detail;
     }
-    presets->addStretch();
-    form->addRow(tr("预设颜色"), presets);
+    monLayout->addLayout(cardsLayout);
 
-    m_applyAll = new QCheckBox(tr("同时应用到 3 个监测点"), box);
-    m_showMask = new QCheckBox(tr("显示二值掩膜"), box);
-    form->addRow(m_applyAll);
-    form->addRow(m_showMask);
-    connect(m_applyAll, &QCheckBox::toggled, this, [this](bool on) {
-        if (on)
-            applyUiParams();
+    // 3. 快捷操作条
+    auto *actionRow = new QHBoxLayout;
+    actionRow->setSpacing(6);
+    m_btnCalibAll = new QPushButton(tr("📷 一键锁定全部基准"), monitorTab);
+    m_btnCalibAll->setStyleSheet(QStringLiteral(
+        "background-color: #0288d1; color: white; font-weight: bold; padding: 5px 10px; border-radius: 4px;"));
+    m_btnResetAll = new QPushButton(tr("重置基准"), monitorTab);
+    m_btnResetAll->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
+    auto *btnExportLog = new QPushButton(tr("导出日志"), monitorTab);
+    btnExportLog->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
+    auto *btnClearLog = new QPushButton(tr("清空"), monitorTab);
+    btnClearLog->setMaximumWidth(52);
+    btnClearLog->setStyleSheet(QStringLiteral("padding: 5px 6px;"));
+    actionRow->addWidget(m_btnCalibAll, 2);
+    actionRow->addWidget(m_btnResetAll, 1);
+    actionRow->addWidget(btnExportLog);
+    actionRow->addWidget(btnClearLog);
+    monLayout->addLayout(actionRow);
+
+    connect(m_btnCalibAll, &QPushButton::clicked, this, &MainWindow::calibrateAllBaselines);
+    connect(m_btnResetAll, &QPushButton::clicked, this, &MainWindow::resetAllBaselines);
+    connect(btnExportLog, &QPushButton::clicked, this, &MainWindow::exportEventLog);
+    connect(btnClearLog, &QPushButton::clicked, this, [this] { m_txtEventLog->clear(); });
+
+    // 4. 异动事件记录（占据底部主要空间，清晰易读）
+    m_txtEventLog = new QPlainTextEdit(monitorTab);
+    m_txtEventLog->setReadOnly(true);
+    m_txtEventLog->setPlaceholderText(tr("目标发生变大、变小、移动、倾斜或消失时将在此记录…"));
+    m_txtEventLog->setStyleSheet(QStringLiteral(
+        "background-color: #1c2026; color: #cfd8dc; font-family: Consolas, 'Microsoft YaHei UI', monospace; font-size: 8.5pt; border-radius: 4px;"));
+    monLayout->addWidget(m_txtEventLog, 1);
+
+    tabs->addTab(monitorTab, tr("实时监控"));
+
+    // ==================== 标签 2：参数设置（收起不占视线） ====================
+    auto *settingsTab = new QWidget(tabs);
+    auto *setLayout = new QVBoxLayout(settingsTab);
+    setLayout->setContentsMargins(12, 12, 12, 12);
+    setLayout->setSpacing(10);
+
+    auto *form = new QFormLayout;
+    form->setSpacing(8);
+
+    m_spinTiltThresh = new QDoubleSpinBox(settingsTab);
+    m_spinTiltThresh->setRange(1.0, 45.0);
+    m_spinTiltThresh->setSingleStep(0.5);
+    m_spinTiltThresh->setValue(m_thresholds.tiltThresh);
+    m_spinTiltThresh->setSuffix(tr(" °"));
+
+    m_spinScaleThresh = new QSpinBox(settingsTab);
+    m_spinScaleThresh->setRange(5, 50);
+    m_spinScaleThresh->setSingleStep(1);
+    m_spinScaleThresh->setValue(int(m_thresholds.scaleThresh * 100.0));
+    m_spinScaleThresh->setSuffix(tr(" %"));
+
+    m_spinDispThresh = new QDoubleSpinBox(settingsTab);
+    m_spinDispThresh->setRange(2.0, 100.0);
+    m_spinDispThresh->setSingleStep(1.0);
+    m_spinDispThresh->setValue(m_thresholds.dispThresh);
+    m_spinDispThresh->setSuffix(tr(" px"));
+
+    m_spinMinArea = new QSpinBox(settingsTab);
+    m_spinMinArea->setRange(50, 100000);
+    m_spinMinArea->setSingleStep(50);
+    m_spinMinArea->setValue(300);
+    m_spinMinArea->setSuffix(tr(" 像素"));
+
+    m_comboMode = new QComboBox(settingsTab);
+    m_comboMode->addItem(tr("智能锁定（框选目标 / 点选轮廓）"));
+    m_comboMode->addItem(tr("HSV 颜色色块 (向后兼容)"));
+
+    m_chkShowMask = new QCheckBox(tr("在画面中显示处理掩膜 / 轮廓边缘"), settingsTab);
+    m_chkBeep = new QCheckBox(tr("异动确认时发出提示音"), settingsTab);
+    m_chkBeep->setChecked(true);
+    m_chkAutoSnap = new QCheckBox(tr("多视角确认告警时自动保存现场截图"), settingsTab);
+    m_chkAutoSnap->setChecked(true);
+
+    form->addRow(tr("倾斜报警门限"), m_spinTiltThresh);
+    form->addRow(tr("尺寸突变门限"), m_spinScaleThresh);
+    form->addRow(tr("位移偏离门限"), m_spinDispThresh);
+    form->addRow(tr("最小目标面积"), m_spinMinArea);
+    form->addRow(tr("检测算法模式"), m_comboMode);
+    setLayout->addLayout(form);
+    setLayout->addWidget(m_chkShowMask);
+    setLayout->addWidget(m_chkBeep);
+    setLayout->addWidget(m_chkAutoSnap);
+    setLayout->addStretch();
+
+    tabs->addTab(settingsTab, tr("参数设置"));
+
+    connect(m_spinTiltThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
+    connect(m_spinScaleThresh, &QSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
+    connect(m_spinDispThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
+    connect(m_spinMinArea, &QSpinBox::valueChanged, this, [this](int area) {
+        for (auto &c : m_channels) {
+            c.autoParams.minArea = area;
+            c.channel->setAutoParams(c.autoParams);
+        }
     });
-    connect(m_showMask, &QCheckBox::toggled, this, [this](bool on) {
-        for (ChannelUi &ui : m_channels) {
-            ui.channel->setShowMask(on);
-            ui.video->setShowMask(on);
+    connect(m_comboMode, &QComboBox::currentIndexChanged, this, &MainWindow::applyDetectorMode);
+    connect(m_chkShowMask, &QCheckBox::toggled, this, [this](bool show) {
+        for (auto &c : m_channels) {
+            c.channel->setShowMask(show);
+            c.video->setShowMask(show);
         }
     });
 
-    auto *hint = new QLabel(tr("提示：H 下限大于上限表示跨过 0（红色）。点击画面可直接取色。"), box);
-    hint->setWordWrap(true);
-    form->addRow(hint);
-
-    connect(m_paramChannel, &QComboBox::currentIndexChanged, this,
-            [this](int index) { selectParamChannel(index); });
-    selectParamChannel(0);
     return box;
 }
 
-void MainWindow::selectParamChannel(int index)
+void MainWindow::calibrateAllBaselines()
 {
-    if (index < 0 || index >= kChannelCount)
-        return;
-    if (m_paramChannel->currentIndex() != index) {
-        m_paramChannel->setCurrentIndex(index);  // 会再次进入本函数
-        return;
+    int count = 0;
+    for (int i = 0; i < kChannelCount; ++i) {
+        if (m_channels[i].channel->isOpen() && m_channels[i].streamAvailable
+            && m_channels[i].observedAtMs >= 0
+            && monitorNowMs() - m_channels[i].observedAtMs <= kMonitorFreshnessMs) {
+            m_channels[i].baselineSet = false;
+            m_channels[i].video->setMonitoringUnavailable(tr("等待基准锁定确认"));
+            m_channels[i].channel->calibrateBaseline();
+            ++count;
+        }
     }
-    loadParamsToUi(m_channels[index].params);
+    appendLog(tr("已向 %1 路有新画面的机位请求锁定基准；等待各路确认").arg(count));
+    statusBar()->showMessage(tr("基准请求已发送；具体成功/失败见事件记录"), 5000);
+    updateFusionDecision();
 }
 
-void MainWindow::loadParamsToUi(const ColorParams &p)
+void MainWindow::resetAllBaselines()
 {
-    m_loadingParams = true;
-    m_hMin->setValue(p.hMin);
-    m_hMax->setValue(p.hMax);
-    m_sMin->setValue(p.sMin);
-    m_sMax->setValue(p.sMax);
-    m_vMin->setValue(p.vMin);
-    m_vMax->setValue(p.vMax);
-    m_minArea->setValue(p.minArea);
-    m_loadingParams = false;
+    for (int i = 0; i < kChannelCount; ++i) {
+        m_channels[i].channel->resetBaseline();
+        m_channels[i].baselineSet = false;
+        m_channels[i].lastAnomaly = AnomalyMetrics();
+        m_channels[i].video->setMonitoringUnavailable(tr("基准已清除"));
+    }
+    m_lastReportedSignature.clear();
+    appendLog(tr("已清除所有机位的基准参考数据"));
+    updateFusionDecision();
 }
 
-void MainWindow::applyUiParams()
+void MainWindow::calibrateSingleChannel(int index)
 {
-    if (m_loadingParams)
-        return;
-    ColorParams p = m_channels[m_paramChannel->currentIndex()].params;
-    p.hMin = m_hMin->value();
-    p.hMax = m_hMax->value();
-    p.sMin = m_sMin->value();
-    p.sMax = m_sMax->value();
-    p.vMin = m_vMin->value();
-    p.vMax = m_vMax->value();
-    p.minArea = m_minArea->value();
+    if (index >= 0 && index < kChannelCount) {
+        if (!m_channels[index].streamAvailable || m_channels[index].observedAtMs < 0
+            || monitorNowMs() - m_channels[index].observedAtMs > kMonitorFreshnessMs) {
+            appendLog(tr("机位 %1 无近期新画面，未锁定基准").arg(index + 1));
+            return;
+        }
+        m_channels[index].baselineSet = false;
+        m_channels[index].video->setMonitoringUnavailable(tr("等待基准锁定确认"));
+        m_channels[index].channel->calibrateBaseline();
+        appendLog(tr("机位 %1 已请求锁定基准，等待确认").arg(index + 1));
+        updateFusionDecision();
+    }
+}
+
+void MainWindow::applyMonitorThresholds()
+{
+    m_thresholds.tiltThresh = m_spinTiltThresh ? m_spinTiltThresh->value() : 8.0;
+    m_thresholds.scaleThresh = m_spinScaleThresh ? (m_spinScaleThresh->value() / 100.0) : 0.15;
+    m_thresholds.dispThresh = m_spinDispThresh ? m_spinDispThresh->value() : 15.0;
+
+    for (auto &c : m_channels) {
+        c.channel->setThresholds(m_thresholds);
+    }
+}
+
+void MainWindow::applyDetectorMode(int modeIndex)
+{
+    for (auto &c : m_channels) {
+        c.channel->setDetectorMode(modeIndex);
+        c.channel->resetBaseline();
+        c.baselineSet = false;
+        c.lastAnomaly = {};
+        c.video->setMonitoringUnavailable(tr("检测模式已变化，请重新选目标并锁定基准"));
+    }
+    updateFusionDecision();
+    appendLog(tr("切换检测模式为：%1").arg(m_comboMode->currentText()));
+}
+
+void MainWindow::updateFusionDecision()
+{
+    const qint64 now = monitorNowMs();
+    int unavailable = 0, uncalibrated = 0, pending = 0, lost = 0;
+    int tilted = 0, scaledLarger = 0, scaledSmaller = 0, displaced = 0, normalCount = 0;
+    QList<int> lostChannels, changedChannels;
+    QStringList alertDetails;
+
+    const auto setCard = [](ChannelUi &ui, const QString &badgeText, const QString &badgeColor, const QString &detailText) {
+        if (ui.cardBadge) {
+            if (ui.cardBadge->text() != badgeText) ui.cardBadge->setText(badgeText);
+            const QString s = QStringLiteral(
+                "border: none; background-color: %1; color: white; font-weight: bold; font-size: 8.5pt; border-radius: 3px;").arg(badgeColor);
+            if (ui.cardBadge->styleSheet() != s) ui.cardBadge->setStyleSheet(s);
+        }
+        if (ui.cardDetail && ui.cardDetail->text() != detailText)
+            ui.cardDetail->setText(detailText);
+    };
 
     for (int i = 0; i < kChannelCount; ++i) {
-        if (i != m_paramChannel->currentIndex() && !m_applyAll->isChecked())
+        auto &ui = m_channels[i];
+        const bool fresh = ui.channel->isOpen() && ui.streamAvailable
+            && ui.observedAtMs >= 0 && now - ui.observedAtMs >= 0
+            && now - ui.observedAtMs <= kMonitorFreshnessMs;
+        if (!fresh) {
+            ++unavailable;
+            const bool opened = ui.channel->isOpen();
+            const QString reason = opened ? tr("视频中断/等待新帧") : tr("未连接");
+            ui.video->setMonitoringUnavailable(reason);
+            setCard(ui, opened ? tr("等待画面") : tr("未连接"), QStringLiteral("#78909c"),
+                    opened ? tr("ESP32 无线连接中或画面过期") : tr("点击连接或等待自动发现"));
             continue;
-        if (m_channels[i].params != p) {
-            m_channels[i].params = p;
-            m_channels[i].channel->setParams(p);
+        }
+        if (!ui.baselineSet || ui.lastAnomaly.type == AnomalyType::Uncalibrated) {
+            ++uncalibrated;
+            setCard(ui, ui.hasTarget ? tr("已选目标") : tr("未设基准"),
+                    ui.hasTarget ? QStringLiteral("#0288d1") : QStringLiteral("#757575"),
+                    ui.hasTarget ? tr("已框选目标，请点击【标定】或【一键锁定】")
+                                 : tr("请在左侧画面拖拽框选目标"));
+            continue;
+        }
+        const auto &a = ui.lastAnomaly;
+        switch (a.type) {
+        case AnomalyType::Lost: {
+            ++lost; lostChannels << (i + 1);
+            setCard(ui, tr("目标不可见"), QStringLiteral("#c62828"), tr("可能移走、遮挡或移出视野"));
+            alertDetails << tr("机位%1 不可见").arg(i + 1);
+            break;
+        }
+        case AnomalyType::Pending: {
+            ++pending;
+            setCard(ui, tr("待确认"), QStringLiteral("#8d6e00"),
+                    a.description.isEmpty() ? tr("正在持续时间防抖确认…") : a.description);
+            break;
+        }
+        case AnomalyType::Tilted: {
+            ++tilted; changedChannels << (i + 1);
+            const QString b = tr("倾斜 %1°").arg(a.deltaAngle, 0, 'f', 1);
+            setCard(ui, b, QStringLiteral("#e65100"),
+                    tr("姿态倾斜 %1° · 面积 %2% · 位移 %3px")
+                        .arg(a.deltaAngle, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            alertDetails << tr("机位%1 %2").arg(i + 1).arg(b);
+            break;
+        }
+        case AnomalyType::ScaledLarger: {
+            ++scaledLarger; changedChannels << (i + 1);
+            const double pct = (a.scaleRatio - 1.0) * 100.0;
+            const QString b = tr("变大 +%1%").arg(pct, 0, 'f', 0);
+            setCard(ui, b, QStringLiteral("#d84315"),
+                    tr("目标变大 +%1%（面积比 %2%）· 位移 %3px")
+                        .arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            alertDetails << tr("机位%1 %2").arg(i + 1).arg(b);
+            break;
+        }
+        case AnomalyType::ScaledSmaller: {
+            ++scaledSmaller; changedChannels << (i + 1);
+            const double pct = (1.0 - a.scaleRatio) * 100.0;
+            const QString b = tr("变小 -%1%").arg(pct, 0, 'f', 0);
+            setCard(ui, b, QStringLiteral("#d84315"),
+                    tr("目标变小 -%1%（面积比 %2%）· 位移 %3px")
+                        .arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            alertDetails << tr("机位%1 %2").arg(i + 1).arg(b);
+            break;
+        }
+        case AnomalyType::Displaced: {
+            ++displaced; changedChannels << (i + 1);
+            const QString b = tr("移动 %1px").arg(a.displacement, 0, 'f', 0);
+            QStringList dirs;
+            if (std::abs(a.deltaX) >= 4.0)
+                dirs << (a.deltaX > 0 ? tr("右%1").arg(a.deltaX, 0, 'f', 0) : tr("左%1").arg(-a.deltaX, 0, 'f', 0));
+            if (std::abs(a.deltaY) >= 4.0)
+                dirs << (a.deltaY > 0 ? tr("下%1").arg(a.deltaY, 0, 'f', 0) : tr("上%1").arg(-a.deltaY, 0, 'f', 0));
+            const QString dirStr = dirs.isEmpty() ? QString() : tr("（%1px）").arg(dirs.join(QStringLiteral("、")));
+            setCard(ui, b, QStringLiteral("#8e24aa"),
+                    tr("位置移动 %1px%2 · 面积 %3%")
+                        .arg(a.displacement, 0, 'f', 1).arg(dirStr).arg(a.scaleRatio * 100.0, 0, 'f', 0));
+            alertDetails << tr("机位%1 移动%2px%3").arg(i + 1).arg(a.displacement, 0, 'f', 1).arg(dirStr);
+            break;
+        }
+        case AnomalyType::Normal: {
+            ++normalCount;
+            const QString metric = a.angleReliable
+                ? tr("面积 %1% · 位移 %2px · 倾角 %3°")
+                      .arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1).arg(a.deltaAngle, 0, 'f', 1)
+                : tr("面积 %1% · 位移 %2px（主轴不可测）")
+                      .arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1);
+            setCard(ui, tr("正常"), QStringLiteral("#2e7d32"), metric);
+            break;
+        }
+        case AnomalyType::Uncalibrated: break;
+        }
+    }
+
+    const int changedTotal = tilted + scaledLarger + scaledSmaller + displaced;
+    QString state, severity, text, color, snapTag;
+    if (lost > 0) {
+        state = QStringLiteral("lost");
+        if (lost >= 2) {
+            severity = QStringLiteral("confirmed");
+            color = QStringLiteral("#b71c1c");
+            snapTag = QStringLiteral("multi-lost");
+            text = tr("🚨 多视角确认告警：藏品目标不可见（%1/3 机位丢失）").arg(lost);
+        } else {
+            severity = QStringLiteral("single");
+            color = QStringLiteral("#d84315");
+            snapTag = QStringLiteral("single-lost");
+            text = tr("⚠️ 单视角预警：机位 %1 目标不可见（另 %2 路正常，疑似遮挡）")
+                       .arg(lostChannels.first()).arg(normalCount);
+        }
+    } else if (changedTotal > 0) {
+        state = QStringLiteral("changed");
+        QStringList kinds;
+        if (scaledLarger > 0) kinds << tr("变大 %1 路").arg(scaledLarger);
+        if (scaledSmaller > 0) kinds << tr("变小 %1 路").arg(scaledSmaller);
+        if (displaced > 0) kinds << tr("移动 %1 路").arg(displaced);
+        if (tilted > 0) kinds << tr("倾斜 %1 路").arg(tilted);
+        const QString summary = kinds.join(QStringLiteral(" / "));
+
+        if (changedTotal >= 2) {
+            severity = QStringLiteral("confirmed");
+            color = QStringLiteral("#c62828");
+            snapTag = QStringLiteral("multi-change");
+            QString interp;
+            if ((scaledLarger > 0 || scaledSmaller > 0) && displaced > 0)
+                interp = tr("（目标空间移动）");
+            else if (scaledLarger >= 2)
+                interp = tr("（目标变大）");
+            else if (scaledSmaller >= 2)
+                interp = tr("（目标变小）");
+            else if (displaced >= 2)
+                interp = tr("（目标移动）");
+            else if (tilted >= 2)
+                interp = tr("（目标倾斜）");
+            text = tr("🚨 多视角确认变化：%1%2").arg(summary, interp);
+        } else {
+            severity = QStringLiteral("single");
+            color = QStringLiteral("#ef6c00");
+            snapTag = QStringLiteral("single-change");
+            text = tr("⚠️ 单视角变化提示：机位 %1（%2）").arg(changedChannels.first()).arg(summary);
+        }
+    } else if (unavailable > 0) {
+        state = QStringLiteral("unavailable");
+        severity = QStringLiteral("incomplete");
+        color = QStringLiteral("#6d4c41");
+        text = tr("监控不完整：%1 路 ESP32 无线视频未就绪").arg(unavailable);
+    } else if (uncalibrated > 0) {
+        state = QStringLiteral("uncalibrated");
+        severity = QStringLiteral("incomplete");
+        color = QStringLiteral("#546e7a");
+        text = tr("待锁定基准：%1 路未标定（请在画面框选目标后点击锁定）").arg(uncalibrated);
+    } else if (pending > 0) {
+        state = QStringLiteral("pending");
+        severity = QStringLiteral("pending");
+        color = QStringLiteral("#806500");
+        text = tr("异动防抖确认中（%1 路）…").arg(pending);
+    } else {
+        state = QStringLiteral("normal");
+        severity = QStringLiteral("normal");
+        color = QStringLiteral("#2e7d32");
+        text = tr("✅ 藏品状态正常：三视角均在基准阈值内");
+    }
+
+    if (unavailable > 0 && (lost > 0 || changedTotal > 0))
+        text += tr("（%1 路离线）").arg(unavailable);
+
+    m_lblFusionStatus->setProperty("monitorState", state);
+    m_lblFusionStatus->setProperty("monitorSeverity", severity);
+    if (m_lblFusionStatus->text() != text) m_lblFusionStatus->setText(text);
+    const QString style = QStringLiteral(
+        "background-color: %1; color: white; font-weight: bold; font-size: 10.5pt; padding: 4px 8px; border-radius: 5px;").arg(color);
+    if (m_lblFusionStatus->styleSheet() != style) m_lblFusionStatus->setStyleSheet(style);
+    m_lblFusionDetail->setText(alertDetails.join(QStringLiteral(" | ")));
+
+    const QString signature = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+        .arg(state, severity).arg(lost).arg(tilted).arg(scaledLarger).arg(scaledSmaller)
+        .arg(displaced).arg(unavailable);
+    if (signature != m_lastReportedSignature) {
+        const QString logEntry = alertDetails.isEmpty() ? text : QStringLiteral("%1 [%2]").arg(text, alertDetails.join(QStringLiteral(", ")));
+        appendLog(logEntry);
+        m_lastReportedSignature = signature;
+
+        if ((severity == QStringLiteral("single") || severity == QStringLiteral("confirmed")) && isVisible()) {
+            if (m_chkBeep && m_chkBeep->isChecked() && now - m_lastBeepMs >= 3000) {
+                QApplication::beep();
+                m_lastBeepMs = now;
+            }
+            if (severity == QStringLiteral("confirmed") && m_chkAutoSnap && m_chkAutoSnap->isChecked()
+                && now - m_lastSnapshotMs >= 5000) {
+                saveAlertSnapshot(snapTag);
+                m_lastSnapshotMs = now;
+            }
         }
     }
 }
 
-void MainWindow::applyPreset(int hMin, int hMax)
+void MainWindow::saveAlertSnapshot(const QString &tag)
 {
-    ColorParams p = m_channels[m_paramChannel->currentIndex()].params;
-    p.hMin = hMin;
-    p.hMax = hMax;
-    p.sMin = 120;
-    p.sMax = 255;
-    p.vMin = 70;
-    p.vMax = 255;
-    loadParamsToUi(p);
-    applyUiParams();
+    const QDir alertDir(QFileInfo(m_settingsPath).dir().filePath(QStringLiteral("alerts")));
+    if (!alertDir.mkpath(QStringLiteral("."))) return;
+    const QString fileName = QStringLiteral("alert-%1-%2.png")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")), tag);
+    const QString fullPath = alertDir.filePath(fileName);
+    if (grab().save(fullPath)) {
+        appendLog(tr("已自动保存告警现场截图：%1").arg(fullPath));
+    }
+}
+
+void MainWindow::exportEventLog()
+{
+    if (!m_txtEventLog) return;
+    const QDir alertDir(QFileInfo(m_settingsPath).dir().filePath(QStringLiteral("alerts")));
+    if (!alertDir.mkpath(QStringLiteral("."))) return;
+    const QString fileName = QStringLiteral("monitor-log-%1.txt")
+        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")));
+    const QString fullPath = alertDir.filePath(fileName);
+    QFile file(fullPath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        file.write(m_txtEventLog->toPlainText().toUtf8());
+        file.close();
+        statusBar()->showMessage(tr("事件日志已导出至 %1").arg(fullPath), 5000);
+        appendLog(tr("已导出事件日志：%1").arg(fullPath));
+    }
+}
+
+void MainWindow::appendLog(const QString &text)
+{
+    if (!m_txtEventLog) return;
+    const QString timeStr = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"));
+    m_txtEventLog->appendPlainText(QStringLiteral("[%1] %2").arg(timeStr, text));
 }
 
 void MainWindow::toggleChannel(int index)
@@ -266,47 +778,67 @@ void MainWindow::toggleChannel(int index)
     ChannelUi &ui = m_channels[index];
     if (ui.channel->isOpen()) {
         ui.channel->close();
-        ui.connectButton->setText(tr("连接"));
-        ui.urlEdit->setEnabled(true);
+        ui.connectButton->setText(tr("重连"));
         ui.video->clear();
         ui.video->setStatus(tr("未连接"));
+        ui.baselineSet = false;
+        ui.hasTarget = false;
+        if (ui.panelBox) ui.panelBox->setTitle(tr("监测机位 %1（ESP32 无线）").arg(index + 1));
+        updateFusionDecision();
         return;
     }
-    const QUrl url = QUrl::fromUserInput(ui.urlEdit->text().trimmed());
-    if (!url.isValid() || (url.scheme() != "http" && url.scheme() != "udp") || url.host().isEmpty()) {
-        statusBar()->showMessage(tr("通道 %1：地址无效，格式如 udp://192.168.1.101:5006 或 http://192.168.1.101:81/stream").arg(index + 1), 5000);
+    if (ui.lastUrl.isValid() && !ui.lastUrl.host().isEmpty()) {
+        openChannel(index, ui.lastUrl);
         return;
     }
-    openChannel(index, url);
+    if (!m_discovery.isRunning()) {
+        m_discovery.start();
+        m_discoveryButton->setText(tr("停止查找"));
+        m_discoveryStatus->setText(tr("正在查找设备…"));
+    }
+    statusBar()->showMessage(tr("正在按固定编号查找机位 #%1（无需关心 COM 口）…").arg(index + 1), 4000);
 }
 
 void MainWindow::openChannel(int index, const QUrl &url)
 {
     if (index < 0 || index >= kChannelCount) return;
+    const QUrl selectedUrl = withVideoProfile(url, m_videoProfile);
+    m_discovery.setTarget(index + 1, QHostAddress(selectedUrl.host()));
     ChannelUi &ui = m_channels[index];
+    ui.lastUrl = selectedUrl;
+    ui.streamAvailable = false;
+    ui.observedAtMs = -1;
+    ui.baselineSet = false;
+    ui.lastAnomaly = {};
+    ui.video->clear();
     ui.automaticConnectionAllowed = true;
     ui.unavailableReason.clear();
-    ui.urlEdit->setText(url.toString());
-    ui.urlEdit->setEnabled(false);
     ui.connectButton->setText(tr("断开"));
     ui.channel->setParams(ui.params);
-    ui.channel->setShowMask(m_showMask->isChecked());
-    ui.channel->open(url);
+    if (m_spinMinArea) ui.autoParams.minArea = m_spinMinArea->value();
+    ui.channel->setAutoParams(ui.autoParams);
+    ui.channel->setDetectorMode(m_comboMode ? m_comboMode->currentIndex() : 0);
+    ui.channel->setShowMask(m_chkShowMask ? m_chkShowMask->isChecked() : false);
+    ui.channel->setThresholds(m_thresholds);
+    ui.channel->open(selectedUrl);
+    updateFusionDecision();
 }
 
 void MainWindow::setChannelUnavailable(int index, const QString &reason)
 {
     if (index < 0 || index >= kChannelCount) return;
+    m_discovery.setTarget(index + 1, {});
     ChannelUi &ui = m_channels[index];
     ui.automaticConnectionAllowed = false;
     ui.unavailableReason = reason;
     ui.channel->close();
     ui.video->clear();
     ui.video->setStatus(reason);
-    ui.connectButton->setText(tr("连接"));
-    ui.urlEdit->setEnabled(true);
+    ui.connectButton->setText(tr("重连"));
     ui.deviceAddress.clear();
+    ui.baselineSet = false;
     updateDiscoveryStatus();
+    updateFusionDecision();
 }
 
 void MainWindow::updateDiscoveryStatus()
@@ -318,32 +850,68 @@ void MainWindow::updateDiscoveryStatus()
 
 void MainWindow::onDeviceFound(const DeviceDiscovery::Device &device)
 {
+    // 严格按 ESP32 固件内固化的 DEVICE_ID (1~3) 映射到固定画面框 1~3，与 USB COM 口无关。
     const int index = device.id - 1;
     if (index < 0 || index >= kChannelCount)
         return;
     ChannelUi &ui = m_channels[index];
     if (!ui.automaticConnectionAllowed) return;
+    const QHostAddress currentHost(ui.channel->url().host());
+    if (ui.channel->isOpen() && currentHost.isLoopback() && !device.address.isLoopback())
+        return;
     const QString address = device.address.toString();
 
-    if (!ui.deviceAddress.isEmpty() && ui.deviceAddress != address) {
-        // 两台设备报告同一编号：保留先发现的那台
-        m_discoveryStatus->setText(tr("编号冲突：%1 和 %2 都是 #%3，请修改固件 DEVICE_ID")
-                                       .arg(ui.deviceAddress, address).arg(device.id));
+    const qint64 now = monitorNowMs();
+    const bool currentlyLive = ui.channel->isOpen() && ui.streamAvailable
+        && ui.observedAtMs >= 0 && now - ui.observedAtMs <= kMonitorFreshnessMs;
+
+    if (currentlyLive && ui.channel->url().host() != address) {
+        if (!ui.deviceAddress.isEmpty() && ui.deviceAddress != address) {
+            m_discoveryStatus->setText(tr("编号冲突：%1 和 %2 都是 #%3，请修改固件 DEVICE_ID")
+                                           .arg(ui.deviceAddress, address).arg(device.id));
+        }
         return;
     }
-    if (ui.deviceAddress.isEmpty()) {
+
+    if (!ui.deviceAddress.isEmpty() && ui.deviceAddress != address) {
+        // 原地址已离线且同一 ID 分配了新 IP：自动迁移到新地址
+        ui.deviceAddress = address;
+    } else if (ui.deviceAddress.isEmpty()) {
         ui.deviceAddress = address;
         updateDiscoveryStatus();
-        // 已有设备接入后放慢广播频率（由 2s 改为 10s），彻底避免 2.4GHz 无线广播风暴引起视频卡顿
-        m_discovery.setInterval(10000);
+        int found = 0;
+        for (const auto &ch : m_channels) found += !ch.deviceAddress.isEmpty();
+        if (found >= kChannelCount) m_discovery.setInterval(10000);
+        appendLog(tr("按固定编号自动绑定机位 #%1（%2）").arg(device.id).arg(address));
     }
-    // 用户已手动连接其他地址时不打扰
-    if (!ui.channel->isOpen())
-        openChannel(index, device.bestStreamUrl());
+
+    // 保存最近发现的 IP 作为下次单播加速提示（仍经 ID 核对，不锁死 COM 口）
+    const QString group = (index == 0 ? QStringLiteral("camera") : QStringLiteral("camera%1").arg(index + 1));
+    QSettings saved(m_settingsPath, QSettings::IniFormat);
+    if (saved.value(group + QStringLiteral("/lastIp")).toString() != address)
+        saved.setValue(group + QStringLiteral("/lastIp"), address);
+
+    QUrl streamUrl = device.bestStreamUrl();
+    QUrlQuery query(streamUrl);
+    if (!query.hasQueryItem(QStringLiteral("transport")))
+        query.addQueryItem(QStringLiteral("transport"), QStringLiteral("simple"));
+    query.removeAllQueryItems(QStringLiteral("id"));
+    query.addQueryItem(QStringLiteral("id"), QString::number(device.id));
+    streamUrl.setQuery(query);
+
+    if (!ui.channel->isOpen() || (!currentlyLive && ui.channel->url().host() != address))
+        openChannel(index, streamUrl);
 }
 
 void MainWindow::onStateChanged(int index, MjpegStream::State state, const QString &detail)
 {
+    if (state != MjpegStream::State::Streaming) {
+        m_channels[index].streamAvailable = false;
+        m_channels[index].observedAtMs = -1;
+        m_channels[index].hasTarget = false;
+        if (m_channels[index].panelBox)
+            m_channels[index].panelBox->setTitle(tr("监测机位 %1（ESP32 无线）").arg(index + 1));
+    }
     QString text;
     switch (state) {
     case MjpegStream::State::Idle:
@@ -354,11 +922,12 @@ void MainWindow::onStateChanged(int index, MjpegStream::State state, const QStri
         text = tr("连接中…");
         break;
     case MjpegStream::State::Streaming:
-        text = tr("接收中");
+        text = tr("接收中：%1").arg(detail);
         break;
     case MjpegStream::State::Reconnecting:
         text = tr("重连中：%1").arg(detail);
         break;
     }
     m_channels[index].video->setStatus(text);
+    updateFusionDecision();
 }

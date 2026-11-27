@@ -97,7 +97,7 @@ void MjpegStream::onReadyRead()
 
     m_watchdog.start();
     if (m_state != State::Streaming)
-        setState(State::Streaming, tr("%1×%2").arg(bgr.cols).arg(bgr.rows));
+        setState(State::Streaming, tr("%1×%2 (HTTP)").arg(bgr.cols).arg(bgr.rows));
     emit frameDecoded(bgr, m_seq, receivedMs);
 }
 

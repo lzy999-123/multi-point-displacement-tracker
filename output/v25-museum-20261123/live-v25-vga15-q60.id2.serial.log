@@ -1,0 +1,91 @@
+[udp] 上位机接入: 10.166.101.174:59065
+[cam] 采集帧率: 0.0 fps (内部RAM 138988 字节)
+[capture-pll] XCLK=24 multiplier=25 PCLK-divider=10 result=0
+[video-profile] applying=0 generation=7336 640x480 target=0
+[udp-err] chunk=0/9 ret=-1 errno=12 budget=1
+[udp-stream] UDP 推流 11.6 fps (分片 443, 失败 0, 退避 1, 内部RAM 138956 字节)
+[udp-pacing] interval=0 effective=56 adaptive=0 budget_drop=1 early_abort=1 pressure=53 retries=53 frame_ms_max=110 jpeg_max=12156 gap=3
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9773
+[radio-tx] 完成=469 失败=0 内部最大连续块=98292 有限重试=53
+[cam] 采集帧率: 27.1 fps (内部RAM 137024 字节)
+[udp-stream] UDP 推流 17.6 fps (分片 632, 失败 0, 退避 0, 内部RAM 126848 字节)
+[udp-pacing] interval=0 effective=56 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=29 jpeg_max=9836 gap=1
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9761
+[radio-tx] 完成=644 失败=0 内部最大连续块=98292 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 136920 字节)
+[udp-stream] UDP 推流 15.0 fps (分片 532, 失败 0, 退避 0, 内部RAM 93872 字节)
+[udp-pacing] interval=0 effective=64 adaptive=8 budget_drop=0 early_abort=0 pressure=54 retries=54 frame_ms_max=223 jpeg_max=9835 gap=4
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9735
+[radio-tx] 完成=522 失败=0 内部最大连续块=45044 有限重试=54
+[cam] 采集帧率: 27.8 fps (内部RAM 138460 字节)
+[udp-stream] UDP 推流 17.4 fps (分片 616, 失败 0, 退避 0, 内部RAM 126912 字节)
+[udp-pacing] interval=0 effective=56 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=38 jpeg_max=9840 gap=2
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9750
+[radio-tx] 完成=644 失败=0 内部最大连续块=86004 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 136920 字节)
+[udp] 上位机接入: 10.166.101.174:59184
+[capture-pll] XCLK=24 multiplier=25 PCLK-divider=10 result=0
+[video-profile] applying=1 generation=31660 320x240 target=0
+[cam] 采集帧率: 26.6 fps (内部RAM 138460 字节)
+[udp-stream] UDP 推流 23.6 fps (分片 354, 失败 0, 退避 0, 内部RAM 133776 字节)
+[udp-pacing] interval=0 effective=40 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=8 jpeg_max=3965 gap=1
+[udp-feedback] enabled=0 window=6 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=42 jpeg_avg=3937
+[radio-tx] 完成=972 失败=0 内部最大连续块=98292 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 138460 字节)
+[udp-stream] UDP 推流 24.4 fps (分片 366, 失败 0, 退避 0, 内部RAM 138460 字节)
+[udp-pacing] interval=0 effective=40 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=7 jpeg_max=3968 gap=1
+[udp-feedback] enabled=0 window=6 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=42 jpeg_avg=3938
+[radio-tx] 完成=377 失败=0 内部最大连续块=98292 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 138460 字节)
+[udp-stream] UDP 推流 24.4 fps (分片 366, 失败 0, 退避 0, 内部RAM 138460 字节)
+[udp-pacing] interval=0 effective=40 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=7 jpeg_max=3972 gap=1
+[udp-feedback] enabled=0 window=6 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=42 jpeg_avg=3941
+[radio-tx] 完成=378 失败=0 内部最大连续块=98292 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 138460 字节)
+[udp-stream] UDP 推流 24.4 fps (分片 366, 失败 0, 退避 0, 内部RAM 138460 字节)
+[udp-pacing] interval=0 effective=40 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=7 jpeg_max=3966 gap=1
+[udp-feedback] enabled=0 window=6 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=42 jpeg_avg=3946
+[radio-tx] 完成=376 失败=0 内部最大连续块=98292 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 138460 字节)
+[udp] 上位机接入: 10.166.101.174:51529
+[capture-pll] XCLK=24 multiplier=25 PCLK-divider=10 result=0
+[video-profile] applying=0 generation=60589 640x480 target=0
+[cam] 采集帧率: 26.7 fps (内部RAM 136792 字节)
+[udp-stream] UDP 推流 17.0 fps (分片 619, 失败 0, 退避 0, 内部RAM 138460 字节)
+[udp-pacing] interval=0 effective=56 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=19 jpeg_max=11105 gap=1
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9724
+[radio-tx] 完成=1005 失败=0 内部最大连续块=98292 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 136920 字节)
+[udp-stream] UDP 推流 17.6 fps (分片 617, 失败 0, 退避 0, 内部RAM 135188 字节)
+[udp-pacing] interval=0 effective=56 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=16 jpeg_max=9804 gap=1
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9744
+[radio-tx] 完成=627 失败=0 内部最大连续块=94196 有限重试=0
+[cam] 采集帧率: 27.8 fps (内部RAM 138248 字节)
+[udp-stream] UDP 推流 17.4 fps (分片 609, 失败 0, 退避 0, 内部RAM 114896 字节)
+[udp-pacing] interval=0 effective=56 adaptive=0 budget_drop=0 early_abort=0 pressure=0 retries=0 frame_ms_max=17 jpeg_max=9799 gap=1
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9747
+[radio-tx] 完成=607 失败=0 内部最大连续块=73716 有限重试=0
+[cam] 采集帧率: 27.7 fps (内部RAM 126848 字节)
+[udp-stream] UDP 推流 11.8 fps (分片 414, 失败 0, 退避 0, 内部RAM 130248 字节)
+[udp-pacing] interval=0 effective=83 adaptive=27 budget_drop=0 early_abort=0 pressure=140 retries=140 frame_ms_max=329 jpeg_max=9821 gap=4
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9748
+[radio-tx] 完成=439 失败=0 内部最大连续块=98292 有限重试=140
+[cam] 采集帧率: 27.7 fps (内部RAM 138460 字节)
+[udp-err] chunk=1/7 ret=-1 errno=12 budget=1
+[udp-stream] UDP 推流 11.6 fps (分片 408, 失败 0, 退避 1, 内部RAM 88332 字节)
+[udp-pacing] interval=0 effective=64 adaptive=8 budget_drop=1 early_abort=0 pressure=81 retries=80 frame_ms_max=349 jpeg_max=9806 gap=4
+[udp-feedback] enabled=0 window=3 ack=0 timeout=0
+[udp-v2] repair=0 repair_fail=0 quality=60 jpeg_avg=9721
+[radio-tx] 完成=386 失败=0 内部最大连续块=45044 有限重试=80

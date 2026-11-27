@@ -3,7 +3,6 @@
 // ===== 每台设备烧录前修改 =====
 // 设备编号 1～3，对应 STM32 的 USART1～3 和上位机的通道 1～3。
 #define DEVICE_ID 1
-
 // ===== 开发板 =====
 // 普通 ESP32-CAM（本次 ESP32-D0WD-V3 + OV3660）使用 AI-Thinker 引脚。
 // S3 构建保留原 S3-EYE 引脚和 GC2145 软件编码路径。
@@ -12,15 +11,21 @@
 #endif
 
 // ===== 视频参数 =====
-// 手机热点下的清晰度升级：传感器原生640x480，目标仍为每路20fps。
-#define CAM_FRAME_SIZE FRAMESIZE_VGA
+// 正式档位：320x240、640x480、800x600均不设置固定发送帧率上限。
+// 上位机通过带代次的档位请求切换，实际完整帧与显示帧须分别验收。
+// Allocate JPEG capture buffers for the largest supported runtime resolution.
+#define CAM_FRAME_SIZE FRAMESIZE_SVGA
 // JPEG 质量 0～100（软件压缩）或 10～63（硬件压缩），见 displacement_cam.ino
 // 实际 JPEG 大小随场景变化；帧率与延时必须通过实机验收。
 #define CAM_SOFT_JPEG_QUALITY 20
-#define CAM_HW_JPEG_QUALITY 18
-#define CAM_FRAME_INTERVAL_MS 32
+#define CAM_HW_JPEG_QUALITY 32
+#define CAM_UDP_JPEG_TARGET_BYTES 2600
+#define CAM_UDP_JPEG_MIN_QUALITY 24
+#define CAM_UDP_JPEG_MAX_QUALITY 42
 #if defined(BOARD_AI_THINKER)
-#define CAM_XCLK_HZ 20000000
+// User-selected 24MHz XCLK. OV3660's matching PLL is applied by captureTask
+// after every resolution change to retain the original JPEG pixel clock.
+#define CAM_XCLK_HZ 24000000
 #else
 #define CAM_XCLK_HZ 20000000
 #endif
@@ -50,20 +55,18 @@
 #define STREAM_PORT 81
 #define STREAM_UDP_PORT 5006
 #define CAM_UDP_PAYLOAD_SIZE 1400
-// 固定发送节拍：45ms ≈ 22fps。低于采集帧率(~27.8fps)，给空口留余量，换取稳定帧率。
-#define CAM_UDP_FRAME_INTERVAL_MS 45
-// 同一帧相邻分片之间的间隔，避免瞬时突发塞满 Wi-Fi 发送缓冲。
-#define CAM_UDP_CHUNK_INTERVAL_MS 3
+// 初始QVGA发送节拍；收到档位请求后由对应档位覆盖。
+#define CAM_UDP_FRAME_INTERVAL_MS 0
 // 使用标准 IP 优先级；热点上的视频队列优先级须经实测后再启用。
 #define CAM_UDP_IP_TOS 0x00
-// 只对短暂的发送缓冲不足进行有限重试，所有等待均计入整帧预算。
-#define CAM_UDP_PACKET_RETRIES 3
-#define CAM_UDP_RETRY_INTERVAL_MS 2
-// 超过次数或整帧预算后丢弃本帧并退避，让驱动排空队列。
-#define CAM_UDP_BACKOFF_MS 30
-#define CAM_UDP_BACKOFF_MAX_MS 200
-// 单帧发送上限；超过预算即丢弃剩余片段，下一拍读取最新图像。
-#define CAM_UDP_FRAME_BUDGET_MS 45
+// 整帧发送预算包含分片节拍和短暂缓冲不足重试；超时仍丢弃旧帧。
+// udp_send_policy.h 按帧大小限制分片等待，连续失败后冷却50/100/150ms。
+// 已开始发送的帧尽量发完：发到一半丢弃的分片同样占用空口，链路慢时会让
+// 每帧都残缺、帧率归零。上限须低于上位机组帧槽寿命 500ms（udpstream.cpp
+// kSlotLifetimeMs），留出驱动队列排空余量。链路好时整帧仍在几十毫秒内发完。
+#define CAM_UDP_FRAME_BUDGET_MS 350
+// VREQA反馈窗口初始1帧，30次确认后升至2帧；发送缓冲不足回到1帧。
+#define CAM_UDP_ACK_TIMEOUT_MS 300
 // 给TCP丢包重传保留时间，避免250ms超时触发反复断开/重连。
 // 不是整帧延迟的硬上限；等待期间采集任务继续覆盖旧画面。
 #define STREAM_SEND_TIMEOUT_MS 1000

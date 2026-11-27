@@ -17,4 +17,5 @@ private:
     struct State;
     std::unique_ptr<State> m_state;
     void poll();
+    void applyConnection(const QString &connected);
 };

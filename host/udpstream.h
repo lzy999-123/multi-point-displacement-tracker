@@ -1,17 +1,16 @@
 #pragma once
 
-#include <QElapsedTimer>
-#include <QHostAddress>
+#include <QByteArray>
 #include <QObject>
+#include <QThread>
 #include <QTimer>
 #include <QUrl>
-#include <QVector>
 
 #include <opencv2/core.hpp>
 
 #include "mjpegstream.h"
 
-class QUdpSocket;
+class UdpFrameReceiver;
 
 #pragma pack(push, 1)
 struct VidPacketHeader {
@@ -27,7 +26,7 @@ struct VidPacketHeader {
 #pragma pack(pop)
 
 // 从 ESP32-CAM 接收轻量 UDP 视频分片（VID1 协议）并组帧解码。
-// 有限槽位容忍分片乱序；每批报文只解码最新完整帧，断流后重新建立序号基准。
+// 专用线程收包并确认完整帧；所属线程只解码最新 JPEG，不积压检测任务。
 class UdpStream : public QObject
 {
     Q_OBJECT
@@ -42,39 +41,20 @@ public:
 signals:
     void frameDecoded(const cv::Mat &bgr, quint64 seq, qint64 receivedMs);
     void stateChanged(MjpegStream::State state, const QString &detail);
+    void videoProfileApplied(int profile);
 
 private:
-    void sendHeartbeat();
-    void onReadyRead();
+    void decodePending();
     void onTimeout();
-    void resetFrames();
     void setState(MjpegStream::State state, const QString &detail = {});
 
-    QUdpSocket *m_socket = nullptr;
-    QTimer m_heartbeatTimer;
+    QThread m_receiveThread;
+    UdpFrameReceiver *m_receiver = nullptr;
     QTimer m_watchdog;
-    QElapsedTimer m_clock;
-
-    QUrl m_url;
-    QHostAddress m_peerAddress;
-    quint16 m_peerPort = 5006;
+    QByteArray m_decodeJpeg;
     MjpegStream::State m_state = MjpegStream::State::Idle;
 
-    struct FrameSlot {
-        quint16 seq = 0;
-        quint8 chunkCount = 0;
-        quint8 receivedChunks = 0;
-        quint32 frameSize = 0;
-        QByteArray buffer;
-        QVector<bool> chunksReceived;
-        bool active = false;
-        qint64 startedMs = 0;
-    };
-    static constexpr int kSlotCount = 8;
-    FrameSlot m_slots[kSlotCount];
-
     quint64 m_frameCounter = 0;
-    quint16 m_lastDeliveredSeq = 0;
-    bool m_hasDelivered = false;
-    quint8 m_deviceId = 0;
+    bool m_open = false;
+    int m_requestedProfile = -1;
 };

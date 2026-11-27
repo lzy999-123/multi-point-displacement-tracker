@@ -60,7 +60,7 @@ if ($Board -eq 'ESP32Cam' -or $Framework -eq '3.3.12') {
     $stage = Join-Path $BuildDirectory 'sketch\displacement_cam'
     $output = Join-Path $BuildDirectory 'bin'
     New-Item -ItemType Directory -Path $stage, $output -Force | Out-Null
-    foreach ($name in @('displacement_cam.ino', 'config.h', 'camera_pins.h', 'secrets.h')) {
+    foreach ($name in @('displacement_cam.ino', 'config.h', 'camera_pins.h', 'udp_send_policy.h', 'udp_video_profile.h', 'secrets.h')) {
         Copy-Item -LiteralPath "$PSScriptRoot\displacement_cam\$name" -Destination $stage -Force
     }
     Set-StagedDeviceId $stage
@@ -75,7 +75,7 @@ if ($Board -eq 'ESP32Cam' -or $Framework -eq '3.3.12') {
         app_sha256 = (Get-FileHash -LiteralPath $app -Algorithm SHA256).Hash
         source_sha256 = @{}
     }
-    foreach ($name in @('displacement_cam.ino', 'config.h', 'camera_pins.h')) {
+    foreach ($name in @('displacement_cam.ino', 'config.h', 'camera_pins.h', 'udp_send_policy.h', 'udp_video_profile.h')) {
         $manifest.source_sha256[$name] = (Get-FileHash -LiteralPath "$stage\$name" -Algorithm SHA256).Hash
     }
     $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$BuildDirectory\build-info.json" -Encoding utf8
@@ -140,7 +140,7 @@ $manifest = [ordered]@{
     jpeg_library_sha256 = (Get-FileHash -LiteralPath $jpegLibrary -Algorithm SHA256).Hash
     source_sha256 = @{}
 }
-foreach ($name in @('displacement_cam.ino', 'config.h', 'camera_pins.h')) {
+foreach ($name in @('displacement_cam.ino', 'config.h', 'camera_pins.h', 'udp_send_policy.h', 'udp_video_profile.h')) {
     $manifest.source_sha256[$name] = (Get-FileHash -LiteralPath "$stage\$name" -Algorithm SHA256).Hash
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath "$BuildDirectory\build-info.json" -Encoding utf8

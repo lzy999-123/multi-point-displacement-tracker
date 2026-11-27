@@ -39,10 +39,17 @@ void setup() {
                   int(WiFi.encryptionType(selected)), WiFi.macAddress().c_str());
   } else Serial.println("[compat] target not in scan; trying saved SSID");
   WiFi.scanDelete();
-  for (int phase = 0; phase < 2 && WiFi.status() != WL_CONNECTED; ++phase) {
+  for (int phase = 0; phase < 3 && WiFi.status() != WL_CONNECTED; ++phase) {
     WiFi.disconnect(false, false); delay(200);
-    const uint8_t protocol = phase == 0 ? WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N
-                                        : WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G;
+    const uint8_t protocol = phase == 1 ? WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G
+                                       : WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N;
+    // ESP32 rejects G-only protocol bitmasks with ESP_ERR_INVALID_ARG. Disable
+    // B rates using the documented API while the driver is stopped instead.
+    esp_err_t stopped = esp_wifi_stop();
+    esp_err_t rates = esp_wifi_config_11b_rate(WIFI_IF_STA, phase != 2);
+    esp_err_t restarted = esp_wifi_start();
+    Serial.printf("[compat] disable-b=%d stop=%d rates=%d start=%d\n",
+                  phase != 2, stopped, rates, restarted);
     Serial.printf("[compat] phase=%d protocol-result=%d\n", phase, esp_wifi_set_protocol(WIFI_IF_STA, protocol));
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD, channel, selected >= 0 ? bssid : nullptr, false);
     WiFi.setTxPower(WIFI_POWER_15dBm);
@@ -54,7 +61,7 @@ void setup() {
     }
     esp_wifi_connect();
     uint32_t start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 35000) delay(100);
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 25000) delay(100);
     Serial.printf("[compat] phase=%d status=%d elapsed=%u power=%d\n", phase,
                   int(WiFi.status()), millis() - start, int(WiFi.getTxPower()));
   }

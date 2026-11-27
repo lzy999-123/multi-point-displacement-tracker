@@ -1,14 +1,16 @@
 #pragma once
 
 #include <QHostAddress>
+#include <QFutureWatcher>
+#include <QHash>
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
 
 class QUdpSocket;
 
-// 在局域网内广播查找 ESP32-CAM（协议见 docs/通信协议.md 第 1 节）。
-// 每 2 秒广播一次，直到 stop()。每次收到合法回复都会发出 deviceFound，由调用方去重。
+// 广播查找 ESP32-CAM，并对已配置地址补发单播，兼容限制客户端广播的热点。
+// 默认每 2 秒查询，直到 stop()。合法回复发出 deviceFound，由调用方去重。
 class DeviceDiscovery : public QObject
 {
     Q_OBJECT
@@ -39,6 +41,7 @@ public:
 
     void start();
     void stop();
+    void setTarget(int deviceId, const QHostAddress &address);
     void setInterval(int ms) { m_timer.setInterval(ms); }
     bool isRunning() const { return m_timer.isActive(); }
 
@@ -57,6 +60,9 @@ private:
     QUdpSocket *m_socket = nullptr;
     QTimer m_timer;
     QString m_nonce;
+    QHash<int, QHostAddress> m_targets;
+    QList<QHostAddress> m_broadcasts;
+    QFutureWatcher<QList<QHostAddress>> m_interfaceScan;
 };
 
 Q_DECLARE_METATYPE(DeviceDiscovery::Device)

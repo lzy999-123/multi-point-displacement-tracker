@@ -58,6 +58,28 @@ class Vid1Test(unittest.TestCase):
         self.assertTrue(summarize(frames, 4, 2, 20, 150, 0)['passed'])
         self.assertFalse(summarize(frames, 4, 2, 20, 150, 1)['passed'])
 
+    def test_interleaved_sequences_do_not_collide_modulo_eight(self):
+        assembler = Assembler()
+        self.assertIsNone(assembler.feed(packet(1, 0, b'a'*1400, 1500, 2), 0))
+        self.assertIsNone(assembler.feed(packet(9, 0, b'b'*1400, 1500, 2), .001))
+        first = assembler.feed(packet(1, 1, b'c'*100, 1500, 2), .002)
+        second = assembler.feed(packet(9, 1, b'd'*100, 1500, 2), .003)
+        self.assertEqual(first[2], b'a'*1400+b'c'*100)
+        self.assertEqual(second[2], b'b'*1400+b'd'*100)
+
+    def test_repairs_are_bounded_fresh_and_cancelled_on_delivery(self):
+        assembler = Assembler()
+        assembler.feed(packet(7, 0, b'a'*1400, 1500, 2), 0)
+        self.assertEqual(assembler.repair_requests(.01), [])
+        first = assembler.repair_requests(.04)
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0], b'VNCK'+bytes([7,0,2,0,0,0,0,0,0,0]))
+        self.assertEqual(assembler.repair_requests(.05), [])
+        self.assertEqual(len(assembler.repair_requests(.12)), 1)
+        self.assertEqual(assembler.repair_requests(.20), [])
+        assembler.delivered(1, 8)
+        self.assertEqual(assembler.repair_requests(.21), [])
+
     def test_requested_vga_checks_every_decoded_frame(self):
         frames = [dict(time_s=i / 25 + .001, width=640, height=480) for i in range(100)]
         self.assertTrue(summarize(frames, 4, 2, 20, 150, 0, 640, 480)['passed'])

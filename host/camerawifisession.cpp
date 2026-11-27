@@ -4,6 +4,8 @@
 #include <QNetworkInterface>
 #include <QTimer>
 #include <QElapsedTimer>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -15,6 +17,7 @@ struct CameraWifiSession::State {
     GUID guid{};
     QString profile, previous;
     QTimer timer;
+    QFutureWatcher<QString> query;
     QElapsedTimer lastAttempt;
     bool guarded = false, announced = false, restoreScan = false;
     BOOL originalScan = TRUE;
@@ -39,6 +42,9 @@ CameraWifiSession::CameraWifiSession(const QString &profile, QObject *parent)
     m_state->profile = profile;
     m_state->timer.setInterval(1000);
     connect(&m_state->timer, &QTimer::timeout, this, &CameraWifiSession::poll);
+    connect(&m_state->query, &QFutureWatcher<QString>::finished, this, [this] {
+        applyConnection(m_state->query.result());
+    });
 }
 
 void CameraWifiSession::start()
@@ -74,16 +80,26 @@ void CameraWifiSession::start()
 void CameraWifiSession::poll()
 {
     State &s = *m_state;
-    if (!s.handle) return;
-    DWORD size;
-    WLAN_OPCODE_VALUE_TYPE type;
-    PVOID data = nullptr;
-    QString connected;
-    if (WlanQueryInterface(s.handle, &s.guid, wlan_intf_opcode_current_connection,
-                           nullptr, &size, &data, &type) == ERROR_SUCCESS) {
-        connected = QString::fromWCharArray(static_cast<PWLAN_CONNECTION_ATTRIBUTES>(data)->strProfileName);
-        WlanFreeMemory(data);
-    }
+    if (!s.handle || s.query.isRunning()) return;
+    const HANDLE handle = s.handle;
+    const GUID guid = s.guid;
+    s.query.setFuture(QtConcurrent::run([handle, guid] {
+        DWORD size;
+        WLAN_OPCODE_VALUE_TYPE type;
+        PVOID data = nullptr;
+        QString connected;
+        if (WlanQueryInterface(handle, &guid, wlan_intf_opcode_current_connection,
+                               nullptr, &size, &data, &type) == ERROR_SUCCESS) {
+            connected = QString::fromWCharArray(static_cast<PWLAN_CONNECTION_ATTRIBUTES>(data)->strProfileName);
+            WlanFreeMemory(data);
+        }
+        return connected;
+    }));
+}
+
+void CameraWifiSession::applyConnection(const QString &connected)
+{
+    State &s = *m_state;
     if (connected.isEmpty() || (!s.profile.isEmpty() && connected != s.profile)) {
         // WLAN restores these per-interface hints automatically on disconnect.
         s.guarded = false;
@@ -95,7 +111,9 @@ void CameraWifiSession::poll()
         return;
     }
     if (!s.guarded) {
-        data = nullptr;
+        DWORD size;
+        WLAN_OPCODE_VALUE_TYPE type;
+        PVOID data = nullptr;
         if (WlanQueryInterface(s.handle, &s.guid, wlan_intf_opcode_background_scan_enabled,
                                nullptr, &size, &data, &type) == ERROR_SUCCESS) {
             s.originalScan = *static_cast<BOOL *>(data);
@@ -129,6 +147,9 @@ CameraWifiSession::~CameraWifiSession()
 {
     State &s = *m_state;
     s.timer.stop();
+    // The worker only captures the native handle/GUID. Join its bounded query
+    // before closing the handle, so shutdown cannot race a WLAN API call.
+    s.query.waitForFinished();
     if (s.handle) {
         if (s.guarded) {
             if (s.restoreScan) s.set(wlan_intf_opcode_background_scan_enabled, s.originalScan);

@@ -1,0 +1,33 @@
+********* Start testing of CoreTest *********
+Config: Using QtTest library 6.10.1, Qt 6.10.1 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : CoreTest::initTestCase()
+PASS   : CoreTest::parserSplitsFramesWithContentLength()
+PASS   : CoreTest::parserHandlesByteByByteInput()
+PASS   : CoreTest::parserFallsBackToMarkers()
+PASS   : CoreTest::parserSkipsInvalidLength()
+PASS   : CoreTest::parserIgnoresHeaderLikeBytesInJpeg()
+PASS   : CoreTest::detectorFindsBlueCircle()
+PASS   : CoreTest::detectorFindsRedAcrossHueZero()
+PASS   : CoreTest::detectorIgnoresSmallNoise()
+PASS   : CoreTest::detectorLimitsTargets()
+PASS   : CoreTest::pickColorProducesWorkingRange()
+PASS   : CoreTest::pickColorWrapsRed()
+PASS   : CoreTest::discoveryParsesAnnounce()
+PASS   : CoreTest::discoveryRejectsBadAnnounce()
+SKIP   : CoreTest::streamReceivesFromFakeCamera() 未设置 FAKE_CAM_URL，跳过联机测试
+..\..\tests\core_test.cpp(265) : failure location
+PASS   : CoreTest::udpReordersAndRejectsDuplicates()
+PASS   : CoreTest::udpRejectsWrongPeerAndMalformedChunks()
+PASS   : CoreTest::udpRecoversAfterCameraRestart()
+PASS   : CoreTest::udpWrapsAndSkipsBacklog()
+PASS   : CoreTest::udpAcknowledgesEveryCompleteFrame()
+PASS   : CoreTest::udpHandlesCollidingSequencesAndLateCompletion()
+PASS   : CoreTest::udpReceivesWhileFrameConsumerBlocks()
+PASS   : CoreTest::udpCloseDiscardsPendingAndReopens()
+PASS   : CoreTest::udpChannelProcessesFramesAndShutsDown()
+PASS   : CoreTest::udpChannelStaysOnUdpAcrossLongOutage()
+PASS   : CoreTest::udpRequestsOnlyMissingFreshChunks()
+PASS   : CoreTest::udpProfileRequiresMatchingConfirmationAndImageDimensions()
+PASS   : CoreTest::cleanupTestCase()
+Totals: 27 passed, 0 failed, 1 skipped, 0 blacklisted, 10072ms
+********* Finished testing of CoreTest *********

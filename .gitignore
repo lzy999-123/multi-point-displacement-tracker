@@ -17,6 +17,14 @@ stm32/**/Release/
 # 数据与临时文件
 data/
 tmp/
+alerts/
+storage-audit-*/
 *.csv
+*.zip
+*.obj
+*.o
+*.exe
+*.dll
+*.elf
 __pycache__/
 *.pyc

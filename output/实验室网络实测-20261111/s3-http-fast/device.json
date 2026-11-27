@@ -1,6 +1,0 @@
-{
-  "chip": "ESP32-S3",
-  "sensor": "GC2145",
-  "port": "COM6",
-  "url": "http://192.168.110.59:81/stream"
-}

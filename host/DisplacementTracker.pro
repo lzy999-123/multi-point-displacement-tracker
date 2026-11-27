@@ -1,4 +1,4 @@
-QT += core gui widgets network serialport
+QT += core gui widgets network serialport concurrent
 CONFIG += c++17
 TARGET = DisplacementTracker
 win32:LIBS += -lwlanapi

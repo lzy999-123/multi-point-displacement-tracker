@@ -2,6 +2,7 @@
 
 #include <QDebug>
 #include <QSerialPortInfo>
+#include <QtConcurrent/QtConcurrentRun>
 
 CameraSerialSession::CameraSerialSession(const QString &portName, QObject *parent)
     : QObject(parent), m_portName(portName)
@@ -13,18 +14,10 @@ CameraSerialSession::CameraSerialSession(const QString &portName, QObject *paren
     connect(&m_port, &QSerialPort::errorOccurred, this, [this](QSerialPort::SerialPortError error) {
         if (error == QSerialPort::ResourceError) m_port.close();
     });
-    tryOpen();
-    m_retry.start();
-}
-
-void CameraSerialSession::tryOpen()
-{
-    if (m_port.isOpen()) return;
-    for (const auto &info : QSerialPortInfo::availablePorts()) {
-        // 只操作本机配置的 CH340；不碰其他 USB/UART 或蓝牙串口。
-        if (info.portName().compare(m_portName, Qt::CaseInsensitive) != 0
-            || info.vendorIdentifier() != 0x1a86 || info.productIdentifier() != 0x7523)
-            continue;
+    connect(&m_scan, &QFutureWatcher<QSerialPortInfo>::finished, this, [this] {
+        if (m_port.isOpen()) return;
+        const auto info = m_scan.result();
+        if (info.isNull()) return;
         m_port.setPort(info);
         m_port.setBaudRate(115200);
         m_port.setFlowControl(QSerialPort::NoFlowControl);
@@ -33,6 +26,22 @@ void CameraSerialSession::tryOpen()
             m_port.setRequestToSend(false);
             qInfo() << "Camera USB session opened:" << info.portName();
         }
-        break;
-    }
+    });
+    tryOpen();
+    m_retry.start();
+}
+
+void CameraSerialSession::tryOpen()
+{
+    if (m_port.isOpen() || m_scan.isRunning()) return;
+    const QString name = m_portName;
+    m_scan.setFuture(QtConcurrent::run([name] {
+        for (const auto &info : QSerialPortInfo::availablePorts()) {
+            // Only open the explicitly configured CH340; exclude other UARTs.
+            if (info.portName().compare(name, Qt::CaseInsensitive) == 0
+                && info.vendorIdentifier() == 0x1a86 && info.productIdentifier() == 0x7523)
+                return info;
+        }
+        return QSerialPortInfo();
+    }));
 }

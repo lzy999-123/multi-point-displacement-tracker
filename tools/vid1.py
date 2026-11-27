@@ -39,23 +39,46 @@ class Assembler:
         if self.last_seq is not None and not newer(seq, self.last_seq):
             self.duplicate_or_old_packets += 1
             return None
-        key = seq % 8
+        key = seq
         slot = self.slots.get(key)
-        if slot and now - slot["started"] >= .25:
+        if slot and now - slot["started"] >= .4:
             slot = None
         if slot and slot["seq"] != seq and not newer(seq, slot["seq"]):
             return None
         if not slot or slot["seq"] != seq:
-            slot = dict(seq=seq, size=size, count=count, started=now, chunks={})
+            for old_key, old in list(self.slots.items()):
+                if now - old["started"] >= .4:
+                    del self.slots[old_key]
+            if len(self.slots) >= 8:
+                del self.slots[min(self.slots, key=lambda k: self.slots[k]["started"])]
+            slot = dict(seq=seq, size=size, count=count, started=now, last=now,
+                        repaired=-1., repair_count=0, chunks={})
             self.slots[key] = slot
         elif slot["size"] != size or slot["count"] != count:
             self.invalid_packets += 1
             return None
+        slot["last"] = now
         slot["chunks"][index] = data[HEADER.size:]
         if len(slot["chunks"]) != count:
             return None
         del self.slots[key]
         return device, seq, b"".join(slot["chunks"][i] for i in range(count))
+
+    def repair_requests(self, now):
+        requests = []
+        for slot in self.slots.values():
+            if (now-slot["started"] < .032 or now-slot["started"] > .25
+                    or now-slot["last"] < .016 or now-slot["repaired"] < .064
+                    or slot["repair_count"] >= 2
+                    or (self.last_seq is not None and not newer(slot["seq"], self.last_seq))):
+                continue
+            missing = [i for i in range(slot["count"]) if i not in slot["chunks"]]
+            if not 0 < len(missing) <= 3:
+                continue
+            requests.append(b"VNCK" + struct.pack("<HQ", slot["seq"], sum(1 << i for i in missing)))
+            slot["repaired"] = now
+            slot["repair_count"] += 1
+        return requests
 
     def delivered(self, device, seq):
         # Only successful decodes advance the chronology.

@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import socket
+import secrets
 import time
 from pathlib import Path
 
@@ -47,8 +48,22 @@ def main():
     parser.add_argument('--min-fps', type=int, default=20)
     parser.add_argument('--max-gap-ms', type=float, default=150)
     parser.add_argument('--output', type=Path, default=Path('tmp/udp-check'))
+    parser.add_argument('--profile', choices=['vga12', 'qvga25', 'baseline10', 'svga'])
+    parser.add_argument('--tos', type=int, default=0)
+    parser.add_argument('--fps', type=int, default=28)
+    parser.add_argument('--target-bytes', type=int, default=6000)
+    parser.add_argument('--qmin', type=int, default=22)
+    parser.add_argument('--qmax', type=int, default=38)
     parser.add_argument('--firmware-manifest', type=Path)
+    parser.add_argument('--legacy-no-feedback', action='store_true',
+                        help='Diagnostic: VREQ only, retain current sensor settings; no ACK/repair')
+    parser.add_argument('--simple', action='store_true',
+                        help='V3 simple transport: configure size/cadence without ACK/repair (v20+)')
     args = parser.parse_args()
+    if args.legacy_no_feedback and args.profile:
+        parser.error('--legacy-no-feedback retains the current sensor size; do not combine with --profile')
+    if args.simple and not args.profile:
+        parser.error('--simple requires a V3 --profile')
     if (not math.isfinite(args.duration) or args.warmup < 0 or args.duration < args.warmup + 1
             or args.width < 1 or args.height < 1 or args.min_fps < 1
             or not math.isfinite(args.max_gap_ms) or args.max_gap_ms <= 0):
@@ -62,6 +77,23 @@ def main():
     except ValueError as exc:
         parser.error(str(exc))
     args.output.mkdir(parents=True, exist_ok=True)
+    if not (0 <= args.tos <= 255 and 5 <= args.fps <= 40 and 3000 <= args.target_bytes <= 16000
+            and 10 <= args.qmin <= 40 and args.qmin <= args.qmax <= 62):
+        parser.error('invalid UDP profile')
+    generation = secrets.randbits(16)
+    if args.profile:
+        profile_id = {'vga12': 0, 'qvga25': 1, 'baseline10': 2, 'svga': 3}[args.profile]
+        args.fps = {0: 0, 1: 0, 2: 10, 3: 0}[profile_id]
+        args.width, args.height = {0: (640, 480), 1: (320, 240), 2: (320, 240), 3: (800, 600)}[profile_id]
+        args.qmin, args.qmax, args.target_bytes = {0: (34, 62, 5600), 1: (24, 42, 2600),
+                                                2: (32, 32, 6500), 3: (26, 46, 10000)}[profile_id]
+        heartbeat = (b'VREQA3' + bytes([args.fps, args.qmin, args.qmax, args.tos])
+                     + args.target_bytes.to_bytes(2, 'little') + bytes([profile_id])
+                     + generation.to_bytes(2, 'little') + bytes([3 if args.simple else 0]))
+    else:
+        heartbeat = b'VREQA2' + bytes([args.fps, args.qmin, args.qmax, args.tos]) + args.target_bytes.to_bytes(2, 'little')
+    if args.legacy_no_feedback:
+        heartbeat = b'VREQ'
 
     # Let the OS choose a source for the actual route, then bind that interface.
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
@@ -79,6 +111,7 @@ def main():
     frames = []
     packets = unexpected = decode_errors = resets = 0
     last_jpeg = None
+    profile_confirmations = []
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind((local_ip, 0))
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 256 * 1024)
@@ -93,9 +126,9 @@ def main():
             except (socket.timeout, ConnectionResetError):
                 pass
             time.sleep(0.05)
-        sock.settimeout(0.05)
+        sock.settimeout(0.008)
         for _ in range(3):
-            sock.sendto(b'VREQ', (host, port))
+            sock.sendto(heartbeat, (host, port))
             time.sleep(0.005)
         start = time.monotonic()
         deadline = start + args.duration
@@ -109,8 +142,11 @@ def main():
                 sequence_reset_at = now
                 resets += 1
             if now - last_heartbeat >= .2:
-                sock.sendto(b'VREQ', (host, port))
+                sock.sendto(heartbeat, (host, port))
                 last_heartbeat = now
+            if not (args.legacy_no_feedback or args.simple):
+                for repair in assembler.repair_requests(now):
+                    sock.sendto(repair, (host, port))
             try:
                 data, source = sock.recvfrom(2048)
             except (socket.timeout, ConnectionResetError):
@@ -121,6 +157,13 @@ def main():
             packets += 1
             if source != (host, port):
                 unexpected += 1
+                continue
+            if len(data) == 16 and data.startswith(b'VCFG'):
+                if int.from_bytes(data[6:8], 'little') == generation:
+                    profile_confirmations.append(dict(time_s=round(now-start, 3), device=data[4],
+                        profile=data[5], width=int.from_bytes(data[8:10], 'little'),
+                        height=int.from_bytes(data[10:12], 'little'), fps=data[12],
+                        transport_flags=data[14]))
                 continue
             result = assembler.feed(data, now)
             if result is None:
@@ -137,17 +180,24 @@ def main():
             if decoded_at >= deadline:
                 break
             assembler.delivered(device, seq)
+            if not (args.legacy_no_feedback or args.simple):
+                sock.sendto(b'VACK' + seq.to_bytes(2, 'little'), (host, port))
             last_good = decoded_at
             frames.append(dict(time_s=decoded_at-start, receive_time_s=now-start, seq=seq,
                                device_id=device, width=image.shape[1], height=image.shape[0],
                                bytes=len(jpeg), sha256=hashlib.sha256(jpeg).hexdigest()))
             last_jpeg = jpeg
 
+        sock.sendto(b'VSTP', (host, port))
+
     summary = summarize(frames, args.duration, args.warmup, args.min_fps,
                         args.max_gap_ms, decode_errors, args.width, args.height)
     summary.update(duration_s=args.duration, elapsed_s=round(time.monotonic()-start, 3),
                    target=f'{host}:{port}', local_ip=local_ip,
                    measured_at=datetime.now().astimezone().isoformat(),
+                   profile=args.profile, profile_confirmations=profile_confirmations,
+                   legacy_no_feedback=args.legacy_no_feedback,
+                   simple_transport=args.simple,
                    total_packets=packets, unexpected_source_packets=unexpected,
                    invalid_packets=assembler.invalid_packets,
                    duplicate_or_old_packets=assembler.duplicate_or_old_packets,
@@ -156,6 +206,11 @@ def main():
                                  min_fps=args.min_fps, max_gap_ms=args.max_gap_ms),
                    tool_sha256={p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                                 for p in (Path(__file__), Path(__file__).with_name('vid1.py'))})
+    if args.profile:
+        summary['transport_confirmed'] = any(
+            c['profile'] == profile_id and c['transport_flags'] == (3 if args.simple else 0)
+            for c in profile_confirmations)
+        summary['passed'] &= summary['transport_confirmed']
     if args.firmware_manifest:
         summary['local_build_manifest'] = json.loads(args.firmware_manifest.read_text(encoding='utf-8-sig'))
         summary['firmware_identity_note'] = 'Local build metadata; not proof of the running device version'

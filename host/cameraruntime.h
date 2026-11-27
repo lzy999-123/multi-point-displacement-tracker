@@ -1,6 +1,8 @@
 #pragma once
 
 #include <QObject>
+#include <QFutureWatcher>
+#include <QSet>
 #include <QTimer>
 #include <QUrl>
 #include <QVector>
@@ -24,6 +26,7 @@ signals:
 
 private:
     void refreshStreams(bool reconnect = false);
+    void scanPorts();
     struct Stream {
         int index;
         QUrl url;
@@ -35,5 +38,8 @@ private:
     CameraWifiSession *m_wifi = nullptr;
     bool m_configuredStreams;
     bool m_networkReady = false;
+    bool m_presenceKnown = false;
+    QSet<QString> m_presentPorts;
+    QFutureWatcher<QSet<QString>> m_portScan;
     QTimer m_presenceTimer;
 };

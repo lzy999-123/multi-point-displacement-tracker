@@ -6,6 +6,7 @@
 #include <QNetworkInterface>
 #include <QRandomGenerator>
 #include <QUdpSocket>
+#include <QtConcurrent/QtConcurrentRun>
 
 DeviceDiscovery::DeviceDiscovery(QObject *parent)
     : QObject(parent), m_socket(new QUdpSocket(this))
@@ -13,6 +14,16 @@ DeviceDiscovery::DeviceDiscovery(QObject *parent)
     m_timer.setInterval(2000);
     connect(&m_timer, &QTimer::timeout, this, &DeviceDiscovery::broadcast);
     connect(m_socket, &QUdpSocket::readyRead, this, &DeviceDiscovery::readPending);
+    connect(&m_interfaceScan, &QFutureWatcher<QList<QHostAddress>>::finished, this, [this] {
+        const bool hadNone = m_broadcasts.isEmpty();
+        m_broadcasts = m_interfaceScan.result();
+        if (hadNone && isRunning() && !m_broadcasts.isEmpty()) {
+            const QByteArray request = QJsonDocument(QJsonObject{
+                {"type", "discover"}, {"version", 1}, {"nonce", m_nonce}}).toJson(QJsonDocument::Compact);
+            for (const auto &address : m_broadcasts)
+                m_socket->writeDatagram(request, address, kPort);
+        }
+    });
 }
 
 void DeviceDiscovery::start()
@@ -29,6 +40,22 @@ void DeviceDiscovery::stop()
     m_timer.stop();
 }
 
+void DeviceDiscovery::setTarget(int deviceId, const QHostAddress &address)
+{
+    if (deviceId < 1 || deviceId > kMaxDeviceId) return;
+    if (address.protocol() != QAbstractSocket::IPv4Protocol || address.isNull()) {
+        m_targets.remove(deviceId);
+        return;
+    }
+    if (m_targets.value(deviceId) == address) return;
+    m_targets.insert(deviceId, address);
+    if (isRunning()) {
+        const auto request = QJsonDocument(QJsonObject{
+            {"type", "discover"}, {"version", 1}, {"nonce", m_nonce}}).toJson(QJsonDocument::Compact);
+        m_socket->writeDatagram(request, address, kPort);
+    }
+}
+
 void DeviceDiscovery::broadcast()
 {
     const QByteArray request = QJsonDocument(QJsonObject{
@@ -36,16 +63,29 @@ void DeviceDiscovery::broadcast()
 
     // Windows 上 255.255.255.255 只从一个网卡发出，所以对每个网卡的广播地址也发一次
     m_socket->writeDatagram(request, QHostAddress::Broadcast, kPort);
-    const auto interfaces = QNetworkInterface::allInterfaces();
-    for (const QNetworkInterface &iface : interfaces) {
-        const auto flags = iface.flags();
-        if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::IsRunning)
-            || (flags & QNetworkInterface::IsLoopBack))
-            continue;
-        for (const QNetworkAddressEntry &entry : iface.addressEntries()) {
-            if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol && !entry.broadcast().isNull())
-                m_socket->writeDatagram(request, entry.broadcast(), kPort);
-        }
+    // Some phone hotspots filter broadcasts between clients. Configured peers
+    // still get ordinary unicast discovery, without changing their video receiver.
+    for (const auto &address : m_targets)
+        m_socket->writeDatagram(request, address, kPort);
+    for (const auto &address : m_broadcasts)
+        m_socket->writeDatagram(request, address, kPort);
+    // Windows adapter enumeration can pause every video widget. Refresh the
+    // broadcast list off the GUI thread; retain the last list while it runs.
+    if (!m_interfaceScan.isRunning()) {
+        m_interfaceScan.setFuture(QtConcurrent::run([] {
+            QList<QHostAddress> addresses;
+            for (const auto &iface : QNetworkInterface::allInterfaces()) {
+                const auto flags = iface.flags();
+                if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::IsRunning)
+                    || (flags & QNetworkInterface::IsLoopBack))
+                    continue;
+                for (const auto &entry : iface.addressEntries())
+                    if (entry.ip().protocol() == QAbstractSocket::IPv4Protocol
+                        && !entry.broadcast().isNull() && !addresses.contains(entry.broadcast()))
+                        addresses.append(entry.broadcast());
+            }
+            return addresses;
+        }));
     }
 }
 

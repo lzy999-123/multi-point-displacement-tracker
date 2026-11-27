@@ -2,6 +2,8 @@
 
 #include <QObject>
 #include <QSerialPort>
+#include <QSerialPortInfo>
+#include <QFutureWatcher>
 #include <QTimer>
 
 // Optional, explicitly configured USB baseboard. Lifetime follows the app.
@@ -17,4 +19,5 @@ private:
     QString m_portName;
     QSerialPort m_port;
     QTimer m_retry;
+    QFutureWatcher<QSerialPortInfo> m_scan;
 };

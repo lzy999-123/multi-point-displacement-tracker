@@ -1,4 +1,4 @@
-QT += core gui widgets network serialport
+QT += core gui widgets network serialport concurrent
 win32:LIBS += -lwlanapi
 CONFIG += c++17 console
 CONFIG -= app_bundle

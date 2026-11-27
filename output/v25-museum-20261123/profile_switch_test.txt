@@ -1,0 +1,13 @@
+********* Start testing of ProfileSwitchTest *********
+Config: Using QtTest library 6.10.1, Qt 6.10.1 (x86_64-little_endian-llp64 shared (dynamic) release build; by MSVC 2022), windows 11
+PASS   : ProfileSwitchTest::initTestCase()
+QWARN  : ProfileSwitchTest::threeCameraButtonsSwitchAndPersistProfiles() QFontDatabase: Cannot find font directory D:/????????/???/????/26????????/host/build/run/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some (from https://dejavu-fonts.github.io/ for example) or switch to fontconfig.
+QWARN  : ProfileSwitchTest::threeCameraButtonsSwitchAndPersistProfiles() This plugin does not support propagateSizeHints()
+PASS   : ProfileSwitchTest::threeCameraButtonsSwitchAndPersistProfiles()
+PASS   : ProfileSwitchTest::retiredDiagnosticSettingMigratesToQvga()
+QWARN  : ProfileSwitchTest::simpleTransportSwitchesThreeCamerasWithoutFeedback() This plugin does not support propagateSizeHints()
+PASS   : ProfileSwitchTest::simpleTransportSwitchesThreeCamerasWithoutFeedback()
+PASS   : ProfileSwitchTest::cleanupTestCase()
+Totals: 5 passed, 0 failed, 0 skipped, 0 blacklisted, 711ms
+********* Finished testing of ProfileSwitchTest *********

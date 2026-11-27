@@ -33,6 +33,8 @@ struct VidPacketHeader {
 
 #include "config.h"
 #include "camera_pins.h"
+#include "udp_send_policy.h"
+#include "udp_video_profile.h"
 
 #if DEVICE_ID < 1 || DEVICE_ID > 3
 #error "DEVICE_ID 必须是 1～3"
@@ -50,6 +52,14 @@ static WiFiUDP discoveryUdp;
 static std::atomic<uint32_t> g_lastWifiEvent{0};
 static std::atomic<uint32_t> g_txDone{0};
 static std::atomic<uint32_t> g_txFailed{0};
+static std::atomic<uint32_t> g_udpFrameIntervalMs{CAM_UDP_FRAME_INTERVAL_MS};
+static std::atomic<unsigned> g_jpegQuality{CAM_HW_JPEG_QUALITY};
+// High bits: request generation; low byte: profile ID. Only the capture task
+// changes sensor settings; UDP waits for a matching, verified JPEG publication.
+static std::atomic<uint32_t> g_requestedVideoConfig{VideoProfile::Qvga25};
+static std::atomic<uint32_t> g_appliedVideoConfig{0xffffffffU};
+static std::atomic<bool> g_captureEnabled{true};
+static std::atomic<unsigned> g_requestedClockMhz{CAM_XCLK_HZ / 1000000};
 
 static void wifiTxDone(uint8_t ifidx, uint8_t *, uint16_t *, bool success) {
   if (ifidx != WIFI_IF_STA && ifidx != WIFI_IF_AP) return;
@@ -64,17 +74,19 @@ static SemaphoreHandle_t g_jpegMutex = nullptr;
 static uint8_t *g_jpegBuf = nullptr;
 static size_t g_jpegLen = 0;
 static uint32_t g_captureMs = 0;
+static uint32_t g_jpegConfig = 0;
 static std::atomic<uint32_t> g_jpegSeq{0};
 static std::atomic<int> g_clients{0};
 static std::atomic<int> g_udpClients{0};
 static bool g_hardwareJpeg = false;
 
-static void publishJpeg(uint8_t *jpg, size_t len, uint32_t captureMs) {
+static void publishJpeg(uint8_t *jpg, size_t len, uint32_t captureMs, uint32_t videoConfig) {
   xSemaphoreTake(g_jpegMutex, portMAX_DELAY);
   uint8_t *old = g_jpegBuf;
   g_jpegBuf = jpg;
   g_jpegLen = len;
   g_captureMs = captureMs;
+  g_jpegConfig = videoConfig;
   g_jpegSeq.fetch_add(1);
   xSemaphoreGive(g_jpegMutex);
   free(old);
@@ -198,11 +210,91 @@ static bool fastJpeg(camera_fb_t *fb, uint8_t **jpg, size_t *len) {
 static void captureTask(void *) {
   uint32_t frames = 0;
   uint32_t windowStart = millis();
+  unsigned appliedQuality = CAM_HW_JPEG_QUALITY;
+  uint32_t appliedConfig = 0xffffffffU;
+  unsigned settleFrames = 0;
+  bool cameraRunning = true;
+  unsigned appliedClock = CAM_XCLK_HZ / 1000000;
 
   for (;;) {
+    if (!g_captureEnabled.load()) {
+      if (cameraRunning) {
+        g_appliedVideoConfig.store(0xffffffffU);
+        const esp_err_t result = esp_camera_deinit();
+        cameraRunning = false;
+#if defined(PWDN_GPIO_NUM) && PWDN_GPIO_NUM != -1
+        pinMode(PWDN_GPIO_NUM, OUTPUT);
+        digitalWrite(PWDN_GPIO_NUM, HIGH);
+#endif
+        Serial.printf("[capture-control] stopped result=%d; Wi-Fi remains associated\n", int(result));
+      }
+      vTaskDelay(pdMS_TO_TICKS(20));
+      continue;
+    }
+    if (!cameraRunning) {
+      if (!startCamera()) { vTaskDelay(pdMS_TO_TICKS(500)); continue; }
+      cameraRunning = true;
+      appliedConfig = 0xffffffffU;
+      appliedQuality = CAM_HW_JPEG_QUALITY;
+      appliedClock = CAM_XCLK_HZ / 1000000;
+    }
+    const unsigned clock = g_requestedClockMhz.load();
+    if (clock != appliedClock) {
+      sensor_t *sensor = esp_camera_sensor_get();
+      const int result = sensor && sensor->set_xclk ? sensor->set_xclk(sensor, LEDC_TIMER_0, clock) : -1;
+      if (result == 0) {
+        appliedClock = clock;
+        appliedConfig = 0xffffffffU;
+        g_appliedVideoConfig.store(0xffffffffU);
+        settleFrames = 3;
+      }
+      else g_requestedClockMhz.store(appliedClock);
+      Serial.printf("[capture-clock] requested=%u applied=%u MHz result=%d\n", clock, appliedClock, result);
+    }
+    const uint32_t requestedConfig = g_requestedVideoConfig.load();
+    const auto preset = VideoProfile::preset(requestedConfig & 0xff);
+    if (requestedConfig != appliedConfig) {
+      sensor_t *sensor = esp_camera_sensor_get();
+      const framesize_t size = preset.width == 320 ? FRAMESIZE_QVGA
+          : preset.width == 800 ? FRAMESIZE_SVGA : FRAMESIZE_VGA;
+      if (!sensor || sensor->set_framesize(sensor, size) != 0) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+        continue;
+      }
+      if (sensor->id.PID == OV3660_PID && appliedClock == 24) {
+        // OV3660's default JPEG PLL uses multiplier 30 for a 20MHz XCLK.
+        // Changing only XCLK to 24MHz also raises PCLK from 10 to 12MHz,
+        // which corrupts JPEGs on these ESP32 boards. Multiplier 25 keeps
+        // the original 50MHz SYSCLK / 10MHz PCLK with the new external clock.
+        const int result = sensor->set_pll
+            ? sensor->set_pll(sensor, 0, 25, 1, 0, 3, 0, 1, 10) : -1;
+        Serial.printf("[capture-pll] XCLK=24 multiplier=25 PCLK-divider=10 result=%d\n", result);
+        if (result != 0) {
+          vTaskDelay(pdMS_TO_TICKS(20));
+          continue;
+        }
+      }
+      appliedConfig = requestedConfig;
+      settleFrames = 3;
+      g_appliedVideoConfig.store(0xffffffffU);
+      Serial.printf("[video-profile] applying=%u generation=%u %ux%u target=%u\n",
+                    unsigned(requestedConfig & 0xff), unsigned(requestedConfig >> 8),
+                    preset.width, preset.height, preset.fps);
+    }
+    const unsigned requestedQuality = g_jpegQuality.load();
+    if (g_hardwareJpeg && requestedQuality != appliedQuality) {
+      sensor_t *sensor = esp_camera_sensor_get();
+      if (sensor && sensor->set_quality(sensor, int(requestedQuality)) == 0)
+        appliedQuality = requestedQuality;
+    }
     camera_fb_t *fb = esp_camera_fb_get();
     if (!fb) {
       vTaskDelay(pdMS_TO_TICKS(5));
+      continue;
+    }
+    if (settleFrames) {
+      --settleFrames;
+      esp_camera_fb_return(fb);
       continue;
     }
 
@@ -228,9 +320,15 @@ static void captureTask(void *) {
     const uint32_t captureMs = uint32_t(uint64_t(fb->timestamp.tv_sec) * 1000 + fb->timestamp.tv_usec / 1000);
     esp_camera_fb_return(fb);
 
-    if (jpg && len > 0) {
-      publishJpeg(jpg, len, captureMs);
+    unsigned width = 0, height = 0;
+    if (jpg && len > 0 && requestedConfig == g_requestedVideoConfig.load()
+        && VideoProfile::jpegDimensions(jpg, len, width, height)
+        && width == preset.width && height == preset.height) {
+      publishJpeg(jpg, len, captureMs, requestedConfig);
+      g_appliedVideoConfig.store(requestedConfig);
       ++frames;
+    } else {
+      free(jpg);
     }
 
     const uint32_t now = millis();
@@ -248,16 +346,39 @@ static void captureTask(void *) {
 
 static void udpVideoTask(void *) {
   constexpr size_t kFrameCapacity = 65536; // 与 VID1 接收端的最大 JPEG 长度一致
-  uint8_t *frameBuf = static_cast<uint8_t *>(ps_malloc(kFrameCapacity));
-  if (!frameBuf) {
+  constexpr unsigned kCacheSlots = 8;      // 与反馈窗口上限一致，避免在途帧未补片先被覆盖
+  struct CachedFrame {
+    uint8_t *data = nullptr;
+    size_t size = 0;
+    uint16_t sequence = 0;
+    uint32_t started = 0, finished = 0, repaired = 0;
+    unsigned repairs = 0;
+    bool valid = false;
+  } cache[kCacheSlots];
+  // 慢链路下上位机可能在分片仍排队时就发出 VNCK。先排空同批 VACK，并在整帧
+  // 发完后稍等，避免把已送达的分片重复塞进本已拥塞的空口。
+  constexpr uint32_t kRepairHoldMs = 15;
+  constexpr uint32_t kRepairMaxAgeMs = 300;
+  struct PendingRepair {
+    uint16_t sequence = 0;
+    uint64_t missing = 0;
+    uint32_t received = 0;
+    bool active = false;
+  } pendingRepairs[4];
+  for (auto &frame : cache) frame.data = static_cast<uint8_t *>(ps_malloc(kFrameCapacity));
+  uint8_t *frameBuf = cache[0].data;
+  bool cacheReady = true;
+  for (auto &frame : cache) if (!frame.data) cacheReady = false;
+  if (!cacheReady) {
     Serial.println("[udp-stream] PSRAM 视频缓存申请失败");
+    for (auto &frame : cache) free(frame.data);
     vTaskDelete(nullptr);
     return;
   }
   int fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (fd < 0) {
     Serial.println("[udp-stream] socket 失败");
-    free(frameBuf);
+    for (auto &frame : cache) free(frame.data);
     vTaskDelete(nullptr);
     return;
   }
@@ -270,12 +391,12 @@ static void udpVideoTask(void *) {
   if (bind(fd, reinterpret_cast<sockaddr *>(&local), sizeof(local)) < 0) {
     Serial.printf("[udp-stream] bind 端口 %d 失败 errno=%d\n", STREAM_UDP_PORT, errno);
     close(fd);
-    free(frameBuf);
+    for (auto &frame : cache) free(frame.data);
     vTaskDelete(nullptr);
     return;
   }
   Serial.printf("[udp-stream] 监听端口 %d (Core 0 运行，与 Wi-Fi 协议栈同核)\n", STREAM_UDP_PORT);
-  const int tos = CAM_UDP_IP_TOS;
+  int tos = CAM_UDP_IP_TOS;
   const int tosResult = setsockopt(fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
   Serial.printf("[udp-stream] IP_TOS=0x%x result=%d\n", tos, tosResult);
 
@@ -283,22 +404,58 @@ static void udpVideoTask(void *) {
   bool hasPeer = false;
   uint32_t lastHeartbeat = 0;
   uint32_t lastSeq = 0;
-  uint32_t nextSendAt = millis();   // 下一帧最早发送时刻（固定节拍）
-  uint32_t backoffMs = 0;           // 当前退避时长，0 表示未退避
+  uint32_t nextSendAt = millis() + DEVICE_ID * 12;
+  UdpSendPolicy pacing(CAM_UDP_FRAME_INTERVAL_MS, CAM_UDP_FRAME_BUDGET_MS);
+  pacing.setFloorInterval(VideoProfile::adaptiveFloorMs(VideoProfile::Qvga25));
+  UdpFrameFeedback feedback(CAM_UDP_ACK_TIMEOUT_MS);
+  UdpJpegQuality quality(CAM_HW_JPEG_QUALITY, CAM_UDP_JPEG_TARGET_BYTES,
+                         CAM_UDP_JPEG_MIN_QUALITY, CAM_UDP_JPEG_MAX_QUALITY);
+  unsigned cacheIndex = 0;
+  bool repairEnabled = false;
+  bool profileEnabled = false;
+  uint8_t transportFlags = 0;
+  uint32_t requestedVideoConfig = 0;
+  uint32_t confirmedVideoConfig = 0xffffffffU;
+  uint32_t nextProfileAck = 0;
+  uint32_t repairedChunks = 0, repairFailures = 0;
   constexpr size_t kMaxChunkPayload = CAM_UDP_PAYLOAD_SIZE;
   constexpr size_t kHeaderSize = sizeof(VidPacketHeader);
   static uint8_t packetBuf[kHeaderSize + kMaxChunkPayload];
 
   uint32_t framesSent = 0, chunksSent = 0, sendFailures = 0, backoffCount = 0, sendRetries = 0;
+  uint32_t budgetDrops = 0, earlyAborts = 0, pressureEvents = 0, frameMsMax = 0, frameBytesMax = 0;
+  uint32_t ackFrames = 0, ackTimeouts = 0;
   uint32_t windowStart = millis();
 
   for (;;) {
+    // Report even when capture has stopped or every frame times out.
+    const uint32_t reportNow = millis();
+    if (reportNow - windowStart >= 5000) {
+      Serial.printf("[udp-stream] UDP 推流 %.1f fps (分片 %u, 失败 %u, 退避 %u, 内部RAM %u 字节)\n",
+                    framesSent * 1000.0f / (reportNow - windowStart), chunksSent, sendFailures, backoffCount,
+                    static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+      Serial.printf("[udp-pacing] interval=%u effective=%u adaptive=%u budget_drop=%u early_abort=%u pressure=%u retries=%u frame_ms_max=%u jpeg_max=%u gap=%u\n",
+                    pacing.interval(), pacing.effectiveInterval(), pacing.adaptiveDelay(),
+                    budgetDrops, earlyAborts, pressureEvents, sendRetries, frameMsMax, frameBytesMax, pacing.gap());
+      Serial.printf("[udp-feedback] enabled=%d window=%u ack=%u timeout=%u\n", feedback.enabled(), feedback.limit(), ackFrames, ackTimeouts);
+      Serial.printf("[udp-v2] repair=%u repair_fail=%u quality=%u jpeg_avg=%u\n",
+                    repairedChunks, repairFailures, quality.quality(), quality.average());
+      Serial.printf("[radio-tx] 完成=%u 失败=%u 内部最大连续块=%u 有限重试=%u\n",
+                    static_cast<unsigned>(g_txDone.exchange(0)),
+                    static_cast<unsigned>(g_txFailed.exchange(0)),
+                    static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)), sendRetries);
+      framesSent = chunksSent = sendFailures = backoffCount = sendRetries = 0;
+      budgetDrops = earlyAborts = pressureEvents = frameMsMax = frameBytesMax = 0;
+      ackFrames = ackTimeouts = 0;
+      repairedChunks = repairFailures = 0;
+      windowStart = reportNow;
+    }
     // 1. 非阻塞轮询上位机保活心跳 ("VREQ" / "VPIN")，吞吐并清除失效端口残留的 ICMP 错误
     sockaddr_in incoming = {};
     socklen_t inLen = sizeof(incoming);
     static char reqBuf[256];
     int rlen = 0;
-    while (true) {
+    for (unsigned requests = 0; requests < 32; ++requests) {
       inLen = sizeof(incoming);
       rlen = recvfrom(fd, reqBuf, sizeof(reqBuf), MSG_DONTWAIT,
                       reinterpret_cast<sockaddr *>(&incoming), &inLen);
@@ -318,7 +475,58 @@ static void udpVideoTask(void *) {
       if (rlen >= 4 && memcmp(reqBuf, "VREQ", 4) == 0) {
         incoming.sin_len = sizeof(incoming);
         incoming.sin_family = AF_INET;
+        const bool changed = !hasPeer || peer.sin_addr.s_addr != incoming.sin_addr.s_addr
+                                     || peer.sin_port != incoming.sin_port;
+        if (changed) {
+          feedback.enable(false);
+          for (auto &frame : cache) frame.valid = false;
+        }
         peer = incoming;
+        repairEnabled = rlen >= 6 && (reqBuf[5] == '2' || reqBuf[5] == '3');
+        profileEnabled = rlen == 16 && reqBuf[5] == '3' && VideoProfile::valid(uint8_t(reqBuf[12]));
+        transportFlags = profileEnabled ? uint8_t(reqBuf[15]) & 3 : 0;
+        const bool acknowledgeFrames = rlen >= 5 && reqBuf[4] == 'A' && !(transportFlags & 1);
+        feedback.enable(acknowledgeFrames);
+        if (profileEnabled)
+          feedback.setWindow(VideoProfile::preset(uint8_t(reqBuf[12])).width == 320 ? 6 : 3,
+                             VideoProfile::preset(uint8_t(reqBuf[12])).width == 320 ? 8 : 4);
+        else
+          feedback.setWindow(repairEnabled ? 2 : 1, 2);
+        if (repairEnabled && (rlen == 12 || profileEnabled)) {
+          const auto preset = VideoProfile::preset(profileEnabled ? uint8_t(reqBuf[12]) : 0);
+          const unsigned fps = profileEnabled ? preset.fps : uint8_t(reqBuf[6]);
+          const unsigned minimum = profileEnabled ? preset.minimumQuality : uint8_t(reqBuf[7]);
+          const unsigned maximum = profileEnabled ? preset.maximumQuality : uint8_t(reqBuf[8]);
+          const unsigned target = profileEnabled ? preset.targetBytes
+              : uint8_t(reqBuf[10]) | (unsigned(uint8_t(reqBuf[11])) << 8);
+          if (VideoProfile::validTransport(fps, minimum, maximum, target)) {
+            g_udpFrameIntervalMs.store(profileEnabled
+                ? VideoProfile::sendIntervalMs(uint8_t(reqBuf[12])) : (fps ? 1000 / fps : 0));
+            pacing.setFloorInterval(profileEnabled
+                ? VideoProfile::adaptiveFloorMs(uint8_t(reqBuf[12])) : 0);
+            quality.configure(target, minimum, maximum);
+            g_jpegQuality.store(quality.quality());
+            const int requestedTos = uint8_t(reqBuf[9]) & 0xfc;
+            if (requestedTos != tos
+                && setsockopt(fd, IPPROTO_IP, IP_TOS, &requestedTos, sizeof(requestedTos)) == 0) {
+              tos = requestedTos;
+              Serial.printf("[udp-config] IP_TOS=0x%x\n", tos);
+            }
+          }
+        }
+        if (profileEnabled) {
+          const uint32_t generation = uint8_t(reqBuf[13]) | (uint32_t(uint8_t(reqBuf[14])) << 8);
+          const uint32_t config = (generation << 8) | uint8_t(reqBuf[12]);
+          if (config != requestedVideoConfig || changed) {
+            requestedVideoConfig = config;
+            confirmedVideoConfig = 0xffffffffU;
+            feedback.enable(false);
+            feedback.enable(acknowledgeFrames);
+            for (auto &frame : cache) frame.valid = false;
+            g_requestedVideoConfig.store(config);
+          }
+        }
+        if (transportFlags & 2) repairEnabled = false;
         if (!hasPeer) {
           Serial.printf("[udp] 上位机接入: %s:%d\n",
                         inet_ntoa(peer.sin_addr), ntohs(peer.sin_port));
@@ -327,19 +535,122 @@ static void udpVideoTask(void *) {
         lastHeartbeat = millis();
         g_udpClients.store(1);
       }
+      const bool fromPeer = hasPeer && incoming.sin_addr.s_addr == peer.sin_addr.s_addr
+                            && incoming.sin_port == peer.sin_port;
+      if (rlen == 4 && memcmp(reqBuf, "VSTP", 4) == 0 && fromPeer) {
+        hasPeer = false;
+        feedback.enable(false);
+        g_udpClients.store(0);
+        for (auto &frame : cache) frame.valid = false;
+      }
+      if (rlen == 14 && memcmp(reqBuf, "VNCK", 4) == 0 && fromPeer && repairEnabled) {
+        // 只登记，等本批 VACK 处理完、整帧发完一段时间后再决定是否补发。
+        const uint16_t seq = uint8_t(reqBuf[4]) | (uint16_t(uint8_t(reqBuf[5])) << 8);
+        uint64_t missing = 0;
+        for (unsigned i = 0; i < 8; ++i) missing |= uint64_t(uint8_t(reqBuf[6 + i])) << (8 * i);
+        PendingRepair *target = nullptr;
+        for (auto &pending : pendingRepairs)
+          if (pending.active && pending.sequence == seq) target = &pending;
+        for (auto &pending : pendingRepairs)
+          if (!target && !pending.active) target = &pending;
+        const uint32_t heardAt = millis();
+        if (!target) {  // 表满时覆盖最早登记的请求
+          target = &pendingRepairs[0];
+          for (auto &pending : pendingRepairs)
+            if (uint32_t(heardAt - pending.received) > uint32_t(heardAt - target->received)) target = &pending;
+        }
+        *target = PendingRepair{seq, missing, heardAt, true};
+      }
+      if (rlen == 6 && memcmp(reqBuf, "VACK", 4) == 0 && hasPeer
+          && incoming.sin_addr.s_addr == peer.sin_addr.s_addr && incoming.sin_port == peer.sin_port) {
+        const uint16_t seq = uint8_t(reqBuf[4]) | (uint16_t(uint8_t(reqBuf[5])) << 8);
+        if (profileEnabled ? feedback.acknowledgeLatest(seq) : feedback.acknowledge(seq)) ++ackFrames;
+        for (auto &frame : cache) if (frame.sequence == seq) frame.valid = false;
+      }
     }
 
     if (!hasPeer || (millis() - lastHeartbeat > 10000)) {
       g_udpClients.store(0);
       hasPeer = false;
+      feedback.enable(false);
+      nextSendAt = millis() + DEVICE_ID * 12;
+      windowStart = millis();
+      framesSent = chunksSent = sendFailures = backoffCount = sendRetries = 0;
+      budgetDrops = earlyAborts = pressureEvents = frameMsMax = frameBytesMax = 0;
+      ackFrames = ackTimeouts = repairedChunks = repairFailures = 0;
       vTaskDelay(pdMS_TO_TICKS(15));
       continue;
     }
 
-    // 2. 固定节拍：未到发送时刻就短暂等待（期间继续轮询心跳），
+    // 1b. 处理登记的补包请求。VACK 已在上面排空：已确认的帧 valid=false，直接丢弃请求。
+    for (auto &pending : pendingRepairs) {
+      if (!pending.active) continue;
+      const uint32_t now = millis();
+      CachedFrame *frame = nullptr;
+      for (auto &candidate : cache)
+        if (candidate.valid && candidate.sequence == pending.sequence) frame = &candidate;
+      if (!repairEnabled || !frame || uint32_t(now - pending.received) > kRepairMaxAgeMs) {
+        pending.active = false;
+        continue;
+      }
+      // 整帧刚发完时，“缺失”的分片多半还在驱动队列或空中；稍等再判断。
+      if (uint32_t(now - frame->finished) < kRepairHoldMs) continue;
+      pending.active = false;
+      const uint64_t missing = pending.missing;
+      const unsigned count = (frame->size + kMaxChunkPayload - 1) / kMaxChunkPayload;
+      if (uint32_t(now - frame->started) > kRepairMaxAgeMs || frame->repairs >= 2
+          || uint32_t(now - frame->repaired) < 8
+          || (missing >> count) || __builtin_popcountll(missing) > 3) continue;
+      ++frame->repairs;
+      frame->repaired = now;
+      for (unsigned c = 0; c < count && uint32_t(millis() - now) < 8; ++c) {
+        if (!(missing & (uint64_t(1) << c))) continue;
+        const size_t offset = c * kMaxChunkPayload;
+        const size_t bytes = frame->size - offset < kMaxChunkPayload ? frame->size - offset : kMaxChunkPayload;
+        const VidPacketHeader header{0x31444956, DEVICE_ID,
+                                     uint8_t(profileEnabled ? (requestedVideoConfig & 0xff) + 1 : 0),
+                                     frame->sequence, uint8_t(c), uint8_t(count),
+                                     uint16_t(bytes), uint32_t(frame->size)};
+        memcpy(packetBuf, &header, sizeof(header));
+        memcpy(packetBuf + kHeaderSize, frame->data + offset, bytes);
+        if (sendto(fd, packetBuf, kHeaderSize + bytes, MSG_DONTWAIT,
+                   reinterpret_cast<sockaddr *>(&peer), sizeof(peer)) < 0) {
+          ++repairFailures;
+          break;
+        }
+        ++repairedChunks;
+        vTaskDelay(pdMS_TO_TICKS(1));
+      }
+    }
+
+    if (profileEnabled) {
+      if (g_appliedVideoConfig.load() != requestedVideoConfig) {
+        vTaskDelay(pdMS_TO_TICKS(2));
+        continue;
+      }
+      if (confirmedVideoConfig != requestedVideoConfig || UdpSendPolicy::due(millis(), nextProfileAck)) {
+        const auto preset = VideoProfile::preset(requestedVideoConfig & 0xff);
+        const unsigned generation = requestedVideoConfig >> 8;
+        const uint8_t ack[16] = {'V', 'C', 'F', 'G', DEVICE_ID, uint8_t(requestedVideoConfig & 0xff),
+                                uint8_t(generation), uint8_t(generation >> 8),
+                                uint8_t(preset.width), uint8_t(preset.width >> 8),
+                                uint8_t(preset.height), uint8_t(preset.height >> 8), preset.fps, 0, transportFlags, 0};
+        sendto(fd, ack, sizeof(ack), MSG_DONTWAIT, reinterpret_cast<sockaddr *>(&peer), sizeof(peer));
+        confirmedVideoConfig = requestedVideoConfig;
+        nextProfileAck = millis() + 500;
+      }
+    }
+
+    // 2. 有上限的发送节拍：未到发送时刻就短暂等待（期间继续轮询心跳），
     //    到点后只取最新一帧，中间产生的帧自然被覆盖跳过。
     const uint32_t nowMs = millis();
-    if (int32_t(nowMs - nextSendAt) < 0) {
+    pacing.setInterval(g_udpFrameIntervalMs.load());
+    if (feedback.waiting(nowMs)) {
+      vTaskDelay(pdMS_TO_TICKS(2));
+      continue;
+    }
+    while (feedback.expire(nowMs)) ++ackTimeouts;
+    if (!UdpSendPolicy::due(nowMs, nextSendAt)) {
       const uint32_t waitMs = nextSendAt - nowMs;
       vTaskDelay(pdMS_TO_TICKS(waitMs > 5 ? 5 : waitMs));
       continue;
@@ -351,17 +662,17 @@ static void udpVideoTask(void *) {
       vTaskDelay(pdMS_TO_TICKS(2));
       continue;
     }
-    // 下一帧时刻按节拍累加；落后超过一个周期时重新对齐，避免追帧突发。
-    nextSendAt += CAM_UDP_FRAME_INTERVAL_MS;
-    if (int32_t(nowMs - nextSendAt) > 0) {
-      nextSendAt = nowMs + CAM_UDP_FRAME_INTERVAL_MS;
-    }
 
+    CachedFrame &cached = cache[cacheIndex];
+    cacheIndex = (cacheIndex + 1) % kCacheSlots;
+    frameBuf = cached.data;
+    cached.valid = false;
     size_t frameLen = 0;
     xSemaphoreTake(g_jpegMutex, portMAX_DELAY);
     // 序号和内容须在同一次锁内读取，防止采集恰好更新时标错帧。
     currentSeq = g_jpegSeq.load();
     frameLen = g_jpegLen;
+    if (profileEnabled && g_jpegConfig != requestedVideoConfig) frameLen = 0;
     if (frameLen > 0 && frameLen <= kFrameCapacity) {
       memcpy(frameBuf, g_jpegBuf, frameLen);
     } else {
@@ -380,16 +691,29 @@ static void udpVideoTask(void *) {
     VidPacketHeader *hdr = reinterpret_cast<VidPacketHeader *>(packetBuf);
     hdr->magic = 0x31444956;  // 'VID1'
     hdr->device_id = DEVICE_ID;
-    hdr->reserved = 0;
+    hdr->reserved = profileEnabled ? uint8_t((requestedVideoConfig & 0xff) + 1) : 0;
     hdr->frame_seq = static_cast<uint16_t>(currentSeq & 0xFFFF);
     hdr->chunk_count = chunkCount;
     hdr->frame_size = static_cast<uint32_t>(frameLen);
 
-    bool frameOk = true;
+    bool frameOk = true, budgetExpired = false, earlyAborted = false, retried = false;
+    int lastError = 0;
     const uint32_t frameStarted = millis();
+    cached.size = frameLen;
+    cached.sequence = uint16_t(currentSeq);
+    cached.started = frameStarted;
+    cached.finished = frameStarted;
+    cached.repaired = 0;
+    cached.repairs = 0;
+    cached.valid = true;
+    if (frameLen > frameBytesMax) frameBytesMax = frameLen;
     for (uint8_t c = 0; c < chunkCount; ++c) {
-      if (millis() - frameStarted >= CAM_UDP_FRAME_BUDGET_MS) {
+      const uint32_t chunkNow = millis();
+      if ((c == 0 && pacing.firstChunkExpired(chunkNow, frameStarted))
+          || pacing.expired(chunkNow, frameStarted)) {
         frameOk = false;
+        budgetExpired = true;
+        earlyAborted = (c == 0);
         break;
       }
       const size_t offset = c * kMaxChunkPayload;
@@ -401,60 +725,59 @@ static void udpVideoTask(void *) {
 
       const size_t totalBytes = kHeaderSize + chunkBytes;
       int sent = -1;
-      for (unsigned retry = 0; retry <= CAM_UDP_PACKET_RETRIES; ++retry) {
-        if (millis() - frameStarted >= CAM_UDP_FRAME_BUDGET_MS) break;
+      for (uint32_t retry = 0;; ++retry) {
+        const uint32_t retryNow = millis();
+        if ((c == 0 && pacing.firstChunkExpired(retryNow, frameStarted))
+            || pacing.expired(retryNow, frameStarted)) {
+          budgetExpired = true;
+          earlyAborted = (c == 0);
+          break;
+        }
         sent = sendto(fd, packetBuf, totalBytes, MSG_DONTWAIT,
                       reinterpret_cast<sockaddr *>(&peer), sizeof(peer));
         if (sent == static_cast<int>(totalBytes)) break;
-        const int error = errno;
-        if (retry == CAM_UDP_PACKET_RETRIES ||
-            (error != ENOMEM && error != ENOBUFS && error != EAGAIN)) break;
-        const uint32_t spent = millis() - frameStarted;
-        if (spent + CAM_UDP_RETRY_INTERVAL_MS >= CAM_UDP_FRAME_BUDGET_MS) break;
+        lastError = sent < 0 ? errno : EIO;
+        if (lastError != ENOMEM && lastError != ENOBUFS && lastError != EAGAIN) break;
+        ++pressureEvents;
+        retried = true;
+        pacing.pressure();
+        feedback.pressure();
+        const uint32_t waitMs = pacing.retryDelay(retry, millis(), frameStarted);
+        if (waitMs == 0) { budgetExpired = true; earlyAborted = (c == 0); break; }
         ++sendRetries;
-        vTaskDelay(pdMS_TO_TICKS(CAM_UDP_RETRY_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(waitMs));
       }
 
       if (sent == static_cast<int>(totalBytes)) {
         ++chunksSent;
       } else {
         frameOk = false;
-        ++sendFailures;
-        if (sendFailures <= 5) {
-          Serial.printf("[udp-err] sendto chunk=%d/%d ret=%d errno=%d\n", c, chunkCount, sent, errno);
+        if (!budgetExpired) ++sendFailures;
+        if (sendFailures + budgetDrops < 5) {
+          Serial.printf("[udp-err] chunk=%d/%d ret=%d errno=%d budget=%d\n", c, chunkCount, sent, lastError, budgetExpired);
         }
         break; // 立即放弃残缺帧剩余分片，杜绝把破损包推入信道
       }
 
       if (c + 1 < chunkCount) {
-        vTaskDelay(pdMS_TO_TICKS(CAM_UDP_CHUNK_INTERVAL_MS));
+        const uint32_t gapMs = pacing.chunkDelay(chunkCount);
+        if (gapMs) vTaskDelay(pdMS_TO_TICKS(gapMs));
       }
     }
 
-    if (frameOk) {
-      ++framesSent;
-      backoffMs = 0;
-    } else {
-      // 退避：暂停发送让 Wi-Fi 驱动排空队列；连续失败则加倍，封顶。
-      backoffMs = backoffMs == 0 ? CAM_UDP_BACKOFF_MS
-                                 : (backoffMs * 2 > CAM_UDP_BACKOFF_MAX_MS ? CAM_UDP_BACKOFF_MAX_MS
-                                                                          : backoffMs * 2);
-      ++backoffCount;
-      nextSendAt = millis() + backoffMs;
-    }
-
     const uint32_t now = millis();
-    if (now - windowStart >= 5000) {
-      Serial.printf("[udp-stream] UDP 推流 %.1f fps (分片 %u, 失败 %u, 退避 %u, 内部RAM %u 字节)\n",
-                    framesSent * 1000.0f / (now - windowStart), chunksSent, sendFailures, backoffCount,
-                    static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
-      Serial.printf("[radio-tx] 完成=%u 失败=%u 内部最大连续块=%u 有限重试=%u\n",
-                    static_cast<unsigned>(g_txDone.exchange(0)),
-                    static_cast<unsigned>(g_txFailed.exchange(0)),
-                    static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)), sendRetries);
-      framesSent = chunksSent = sendFailures = backoffCount = sendRetries = 0;
-      windowStart = now;
+    cached.finished = now;
+    if (now - frameStarted > frameMsMax) frameMsMax = now - frameStarted;
+    if (budgetExpired) {
+      ++budgetDrops;
+      if (earlyAborted) ++earlyAborts;
     }
+    if (frameOk) ++framesSent;
+    else ++backoffCount;
+    // Start the ACK lease after the final send, rather than before retries.
+    if (frameOk) feedback.submitted(static_cast<uint16_t>(currentSeq), now);
+    g_jpegQuality.store(quality.observe(unsigned(frameLen), !frameOk || retried));
+    nextSendAt = pacing.finish(frameStarted, now, frameOk, retried);
   }
 }
 
@@ -656,7 +979,9 @@ static void setupWifi() {
   WiFi.mode(WIFI_STA);
   Serial.printf("[wifi] Arduino 原生初始化，TX统计回调 result=%d\n", int(esp_wifi_set_tx_done_cb(wifiTxDone)));
   WiFi.setSleep(false);
-  WiFi.setAutoReconnect(true);
+  // Bound association retries while the camera is still in power-down. Once
+  // associated, the regular reconnect path is enabled below.
+  WiFi.setAutoReconnect(false);
   esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
   WiFi.setTxPower(CAM_WIFI_TX_POWER);
 
@@ -677,15 +1002,22 @@ static void setupWifi() {
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.printf("[wifi] 连接 %s", WIFI_SSID);
-  uint32_t start = millis();
+  uint32_t nextAttempt = millis() + 20000;
+  uint32_t nextReport = millis();
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print('.');
-    if (millis() - start > 25000) {
-      Serial.println("\n[wifi] 25s 未连上，重启");
-      ESP.restart();
+    delay(100);
+    pollDiagnostics();
+    const uint32_t now = millis();
+    if (UdpSendPolicy::due(now, nextReport)) {
+      Serial.printf("[wifi] waiting for configured AP; status=%d uptime=%u\n", int(WiFi.status()), now);
+      nextReport = now + 5000;
+    }
+    if (UdpSendPolicy::due(now, nextAttempt) && now - g_lastWifiEvent.load() >= 5000) {
+      WiFi.reconnect();
+      nextAttempt = now + 20000;
     }
   }
+  WiFi.setAutoReconnect(true);
   esp_wifi_set_ps(WIFI_PS_NONE);
   WiFi.setSleep(false);
   WiFi.setTxPower(CAM_WIFI_TX_POWER);
@@ -702,6 +1034,21 @@ static void setupWifi() {
 static void pollDiagnostics() {
   while (Serial.available()) {
     const char c = Serial.read();
+    if (c == 'x' || c == 'c') {
+      g_captureEnabled.store(c == 'c');
+      Serial.printf("[capture-control] requested enabled=%d\n", c == 'c');
+    }
+    if (c == '6' || c == '4' || c == 'E') {
+      const unsigned clock = c == '6' ? 16 : c == '4' ? 24 : 20;
+      g_requestedClockMhz.store(clock);
+      Serial.printf("[capture-clock] queued %u MHz (reset restores source default)\n", clock);
+    }
+    if (c == '2' || c == '5' || c == '0') {
+      const uint32_t interval = c == '2' ? 45 : (c == '5' ? 40 : 0);
+      g_udpFrameIntervalMs.store(interval);
+      Serial.printf("[udp-config] interval=%u ms (0=capture limited), reset restores %u\n",
+                    interval, unsigned(CAM_UDP_FRAME_INTERVAL_MS));
+    }
     if (c == 'n' || c == 'N') {
       Serial.printf("[net] STA MAC=%s mask=%s gateway=%s\n", WiFi.macAddress().c_str(),
                     WiFi.subnetMask().toString().c_str(), WiFi.gatewayIP().toString().c_str());
@@ -751,7 +1098,7 @@ static void pollDiagnostics() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\n[boot] 位移跟踪相机 #%d vga-paced-tx-v5 %s %s\n", DEVICE_ID, __DATE__, __TIME__);
+  Serial.printf("\n[boot] 图像监测相机 #%d adaptive-udp-v25 %s %s\n", DEVICE_ID, __DATE__, __TIME__);
 
 #ifdef FLASH_LED_GPIO_NUM
   pinMode(FLASH_LED_GPIO_NUM, OUTPUT);
@@ -762,8 +1109,8 @@ void setup() {
   pinMode(PWDN_GPIO_NUM, OUTPUT);
   digitalWrite(PWDN_GPIO_NUM, HIGH); // 进入传感器 power-down；不等于切断供电轨
   delay(30);
-  digitalWrite(PWDN_GPIO_NUM, LOW);  // 再上电恢复
-  delay(30);
+  // esp_camera_init releases PWDN after Wi-Fi association; do not run the
+  // uninitialized sensor during network authentication.
 #endif
 
   // 先完成联网，再启动摄像头时钟与 DMA，减少初始化工作的重叠。
