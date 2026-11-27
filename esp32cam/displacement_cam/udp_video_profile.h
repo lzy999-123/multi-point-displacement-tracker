@@ -16,14 +16,14 @@ struct Preset {
 inline bool valid(unsigned id) { return id <= Svga; }
 inline Preset preset(unsigned id) {
   if (id == Baseline10) return Preset{320, 240, 10, 32, 32, 6500};
-  if (id == Svga) return Preset{800, 600, 0, 26, 46, 10000};
-  return id == Qvga25 ? Preset{320, 240, 0, 24, 42, 2600}
-                      : Preset{640, 480, 0, 34, 62, 5600};
+  if (id == Svga) return Preset{800, 600, 0, 18, 34, 15500};
+  return id == Qvga25 ? Preset{320, 240, 0, 14, 24, 5500}
+                      : Preset{640, 480, 0, 30, 30, 15000};
 }
 
 // Production modes keep protocol fps=0 (no rigid legacy cap), while using a
 // smooth per-resolution pacing floor paired with AIMD congestion backoff so
-// three cameras sharing one 2.4GHz hotspot do not saturate the AP queue.
+// cameras sharing one 2.4GHz hotspot hold >=15fps without queue collapse.
 inline unsigned sendIntervalMs(unsigned id) {
   return preset(id).fps ? 1000 / preset(id).fps : 0;
 }
@@ -31,7 +31,16 @@ inline unsigned sendIntervalMs(unsigned id) {
 inline unsigned adaptiveFloorMs(unsigned id) {
   if (id == Baseline10) return 100;
   if (id == Svga) return 105;
-  return id == Qvga25 ? 40 : 60;
+  return id == Qvga25 ? 40 : 50;
+}
+
+// High-quality VREQ02 wireless tuning cadence used after VCFG confirms resolution
+// (balanced 20fps ceiling prevents one camera from hogging airtime while keeping
+// AIMD headroom so 640x480 sustains >=15fps with crisp q18..42).
+inline uint8_t hqTuneFps(unsigned id) {
+  if (id == Baseline10) return 10;
+  if (id == Svga) return 16;
+  return id == Qvga25 ? 26 : 20;
 }
 
 inline bool validTransport(unsigned fps, unsigned minimum, unsigned maximum, unsigned targetBytes) {

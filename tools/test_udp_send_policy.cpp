@@ -145,14 +145,14 @@ int main() {
   // AIMD adaptive pacing backs off even when retries succeed, and recovers on clean frames.
   UdpSendPolicy adaptive(0, 350);
   adaptive.setFloorInterval(VideoProfile::adaptiveFloorMs(VideoProfile::Vga12));
-  assert(adaptive.effectiveInterval() == 60);
+  assert(adaptive.effectiveInterval() == 50);
   assert(VideoProfile::adaptiveFloorMs(VideoProfile::Qvga25) == 40);
   assert(VideoProfile::adaptiveFloorMs(VideoProfile::Svga) == 105);
   assert(!adaptive.firstChunkExpired(34, 0));
   assert(adaptive.firstChunkExpired(35, 0));
   adaptive.finish(0, 20, true, true);
   assert(adaptive.adaptiveDelay() == 8);
-  assert(adaptive.effectiveInterval() == 68);
+  assert(adaptive.effectiveInterval() == 58);
   for (unsigned i = 0; i < 20; ++i) adaptive.finish(0, 10, true, false);
   assert(adaptive.adaptiveDelay() == 0);
   std::puts("UDP pacing deadline, large-frame, AIMD recovery and rollover checks passed.");

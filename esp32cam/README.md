@@ -1,4 +1,4 @@
-> 当前基线（2026-11-23）：`adaptive-udp-v25`（普通 ESP32-D0WD-V3 + OV3660，24 MHz XCLK + 配套 PLL 乘数 25 / PCLK 分频 10）。支持 640×480 / 320×240 / 800×600 运行时切档、每档平滑节拍底限（60 / 40 / 105 ms）+ AIMD 拥塞退让 + `chunk=0` 35 ms 早退 + 8 槽 PSRAM 缓存 + 机位相位错峰，完整三路实测见 [优化与实测报告](../output/v25-museum-20261123/优化与实测报告.md)。三块板构建时分别使用 `build.ps1 -Board ESP32Cam -Framework 3.3.12 -DeviceId 1/2/3`；下方保留早期板型与迭代说明作历史参考。
+> 当前基线（2026-11-27）：`adaptive-udp-v26`（普通 ESP32-D0WD-V3 + OV3660，24 MHz XCLK + 配套 PLL 乘数 25 / PCLK 分频 10）。在 `v25` 基础上优化了 OV3660 零延迟硬件 ISP 成像参数（`brightness=0, contrast=1, saturation=0, sharpness=2, denoise=1, lenc=1, bpc=1, wpc=1`，保持满速 27.7 fps 原生采集），默认 640×480 档位锁定 `q=30`（`target=15000 B`、`50 ms` 底限），并支持上位机通过 `VREQ02` 实时调整硬件 JPEG 质量（30 / 24 / 20 / 16 / 自动 18～42）。三块板构建时分别使用 `build.ps1 -Board ESP32Cam -Framework 3.3.12 -DeviceId 1/2/3`；下方保留早期板型与迭代说明作历史参考。
 
 # ESP32-CAM 固件
 

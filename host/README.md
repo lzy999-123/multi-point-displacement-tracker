@@ -13,7 +13,7 @@
 依赖：Qt 6.10.1 MSVC2022 64 位、OpenCV 4.12。
 
 - 日常启动：双击 `run.cmd`（自动增量构建、部署依赖并启动 `build/run/DisplacementTracker.exe`）。
-- 配置文件：`host/camera-runtime.ini`（部署时会同步到 `host/build/run/camera-runtime.ini`）。当前配置为纯无线模式（未配置 `serialPort`），对应 `Redmi K70E` 热点，ID1/2/3 默认 IP `10.166.101.145 / .157 / .129`，默认启动档位为 `vga12`（640×480 自适应节拍）。
+- 配置文件：`host/camera-runtime.ini`（部署时会同步到 `host/build/run/camera-runtime.ini`）。当前配置为纯无线模式（未配置 `serialPort`），对应 `Redmi K70E` 热点，ID1/2/3 默认 IP `10.166.101.145 / .157 / .129`，默认启动档位为 `vga12`（640×480）+ `jpegQuality=30`（工具栏支持实时切换锁定 `30 / 24 / 20 / 16` 或自动 `18～42`）。
 
 ## 监测操作与三视角融合逻辑
 
@@ -35,7 +35,7 @@
 .\deploy.ps1 -Executables @('DisplacementTracker','core_test','monitor_test','profile_switch_test','profile_live')
 ```
 
-- `core_test.exe`：UDP/VID1 协议、组帧、恢复与色块回归（28 通过，0 失败，1 联机用例跳过）。
+- `core_test.exe`：UDP/VID1 协议、组帧、恢复、无线高清质量切换与色块回归（29 通过，0 失败，1 联机用例跳过）。
 - `monitor_test.exe`：单点选轮廓、ROI 拖拽框选跟踪（静止/移动/变大/变小/倾斜/消失/恢复）、近对称主轴屏蔽、防抖、新鲜度、单/多视角分级融合回归（20 通过，0 失败）。
 - `profile_switch_test.exe`：三路分辨率切换、配置确认与持久化回归（5 通过，0 失败）。
 - `profile_live.exe`：三路真实无线窗口实测验收器（实测记录见 `output/v25-museum-20261123/优化与实测报告.md`）。

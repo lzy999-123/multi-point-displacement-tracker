@@ -156,8 +156,18 @@ static bool startCamera() {
 
   sensor_t *s = esp_camera_sensor_get();
   if (pid == OV3660_PID) {
-    s->set_brightness(s, 1);
-    s->set_saturation(s, -2);
+    // Keep default AEC/AGC so OV3660 holds full 27.7 fps indoor capture;
+    // tune only zero-latency ISP clarity registers (no night-mode exposure stretch).
+    const int rBr = s->set_brightness ? s->set_brightness(s, 0) : -1;
+    const int rCt = s->set_contrast ? s->set_contrast(s, 1) : -1;
+    const int rSa = s->set_saturation ? s->set_saturation(s, 0) : -1;
+    const int rSh = s->set_sharpness ? s->set_sharpness(s, 2) : -1;
+    const int rDn = s->set_denoise ? s->set_denoise(s, 1) : -1;
+    const int rLc = s->set_lenc ? s->set_lenc(s, 1) : -1;
+    const int rBp = s->set_bpc ? s->set_bpc(s, 1) : -1;
+    const int rWp = s->set_wpc ? s->set_wpc(s, 1) : -1;
+    Serial.printf("[cam-isp] OV3660 br=%d ct=%d sa=%d sh=%d dn=%d lenc=%d bpc=%d wpc=%d\n",
+                  rBr, rCt, rSa, rSh, rDn, rLc, rBp, rWp);
   }
   if (s->set_vflip) s->set_vflip(s, CAM_VFLIP);
   if (s->set_hmirror) s->set_hmirror(s, CAM_HMIRROR);
@@ -1098,7 +1108,7 @@ static void pollDiagnostics() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\n[boot] 图像监测相机 #%d adaptive-udp-v25 %s %s\n", DEVICE_ID, __DATE__, __TIME__);
+  Serial.printf("\n[boot] 图像监测相机 #%d adaptive-udp-v26 %s %s\n", DEVICE_ID, __DATE__, __TIME__);
 
 #ifdef FLASH_LED_GPIO_NUM
   pinMode(FLASH_LED_GPIO_NUM, OUTPUT);

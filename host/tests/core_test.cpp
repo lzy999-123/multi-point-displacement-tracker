@@ -70,6 +70,7 @@ private slots:
     void udpChannelStaysOnUdpAcrossLongOutage();
     void udpRequestsOnlyMissingFreshChunks();
     void udpProfileRequiresMatchingConfirmationAndImageDimensions();
+    void udpHighQualityTuneTransitionsAfterProfileConfirmationAndRecovers();
     void udpEnforcesExpectedDeviceId();
 };
 
@@ -665,6 +666,60 @@ void CoreTest::udpProfileRequiresMatchingConfirmationAndImageDimensions()
     const cv::Mat frame = f.decoded.first()[0].value<cv::Mat>();
     QCOMPARE(frame.cols, 320);
     QCOMPARE(frame.rows, 240);
+}
+
+void CoreTest::udpHighQualityTuneTransitionsAfterProfileConfirmationAndRecovers()
+{
+    UdpFixture f;
+    f.stream.close();
+    f.controls.clear();
+    f.clientPort = 0;
+    QSignalSpy applied(&f.stream, &UdpStream::videoProfileApplied);
+    QUrl url(QString("udp://127.0.0.1:%1?transport=simple&hq=1&id=1").arg(f.camera.localPort()));
+    f.stream.open(withVideoProfile(url, VideoProfile::Vga12));
+    QTRY_VERIFY(f.clientPort != 0);
+    QByteArray v3;
+    for (const auto &c : f.controls) if (c.startsWith("VREQA3")) v3 = c;
+    QCOMPARE(v3.size(), 16);
+    QCOMPARE(quint8(v3[12]), quint8(VideoProfile::Vga12));
+    QCOMPARE(quint8(v3[15]), quint8(3));
+
+    f.controls.clear();
+    QByteArray ack("VCFG");
+    ack.append(char(1)); ack.append(char(VideoProfile::Vga12));
+    ack.append(v3.mid(13, 2));
+    for (unsigned value : {640U, 480U}) {
+        ack.append(char(value)); ack.append(char(value >> 8));
+    }
+    ack.append(char(0)); ack.append(char(0)); ack.append(char(3)); ack.append(char(0));
+    f.camera.writeDatagram(ack, f.client, f.clientPort);
+    QTRY_COMPARE(applied.size(), 1);
+    QTRY_VERIFY(!f.controls.isEmpty());
+    QByteArray v2;
+    for (const auto &c : f.controls) if (c.startsWith("VREQ02")) v2 = c;
+    QCOMPARE(v2.size(), 12);
+    const auto preset = VideoProfile::preset(VideoProfile::Vga12);
+    QCOMPARE(quint8(v2[6]), VideoProfile::hqTuneFps(VideoProfile::Vga12));
+    QCOMPARE(quint8(v2[7]), preset.minimumQuality);
+    QCOMPARE(quint8(v2[8]), preset.maximumQuality);
+    const quint16 target = quint8(v2[10]) | (quint16(quint8(v2[11])) << 8);
+    QCOMPARE(target, preset.targetBytes);
+
+    // After VREQ02 handoff, v25 cameras send reserved=0; exact resolution check still protects UI.
+    f.jpeg = encodeJpeg(cv::Scalar(0, 255, 0), 320, 240);
+    f.send(1);
+    QTest::qWait(80);
+    QCOMPARE(f.decoded.size(), 0);
+    f.jpeg = encodeJpeg(cv::Scalar(0, 255, 0), 640, 480);
+    f.send(2);
+    QTRY_COMPARE(f.decoded.size(), 1);
+
+    // Watchdog timeout must fall back to VREQA3 to re-lock resolution after camera reboot.
+    f.controls.clear();
+    QTRY_VERIFY_WITH_TIMEOUT(f.stream.state() == MjpegStream::State::Reconnecting, 2200);
+    bool sawV3Again = false;
+    for (const auto &c : f.controls) if (c.startsWith("VREQA3")) sawV3Again = true;
+    QVERIFY(sawV3Again);
 }
 
 void CoreTest::udpEnforcesExpectedDeviceId()

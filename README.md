@@ -17,7 +17,7 @@
 
 1. 打开手机热点 `Redmi K70E`（2.4 GHz），将电脑连入该热点，确认 3 台 ESP32-CAM 通电并自动联网。
 2. 双击 `host/run.cmd`（增量构建并启动）或直接运行 `host/build/run/DisplacementTracker.exe`。
-3. 等待三路画面显示（工具栏可同步切换 **640×480 / 320×240 / 800×600**，默认 **640×480**）。
+3. 等待三路画面显示（工具栏可同步切换 **640×480 / 320×240 / 800×600**，默认 **640×480**，并支持实时切换硬件 **JPEG 质量：锁定 30 / 24 / 20 / 16 或自动 18～42**，默认锁定 `q=30`）。
 4. **锁定目标**：在每路实时画面中**按住鼠标左键拖拽框选目标**（支持任意纹理展品），或单击目标轮廓内部。
 5. **锁定基准**：看到三路画面均出现绿色目标框后，点击顶部**“一键全机位锁定基准”**（或各路单独点击**“标定”**）。
 6. **实时监测与输出提示**：
@@ -52,6 +52,11 @@
 
 > 注：以上均为三台真实 ESP32-CAM 同时推流、经正式 Qt 解码检测并实际绘制到可见窗口后的统计（每档 25 秒、预热 5 秒后统计）；在单射频 2.4 GHz 手机热点下受空口双跳与热点省电合包制约，顺畅窗口 640×480 可稳居 15~16+ fps，遇信道突发干扰时由 AIMD 短暂降速护航并在数秒内回升；如需全天候恒定 15~20+ fps 建议切换独立双频路由器（电脑接 5 GHz 或有线网口，ESP32 接 2.4 GHz）。
 
+### 2026-11-27 画质与三路实机升级（v26）
+- **ESP32-CAM 固件 `adaptive-udp-v26`**：优化 OV3660 零延迟硬件 ISP 成像参数（`brightness=0, contrast=1, saturation=0, sharpness=2, denoise=1, lenc=1, bpc=1, wpc=1`），消除原厂默认发灰雾感同时保持全速 **27.7 fps** 原生采集；默认 `640×480` 档位改为锁定 `q=30`（`target=15000 B`、`50 ms` 节拍底限），三块板（ID1～3）均已完成 MAC 核对、应用区 `0x10000` 烧录与 Hash 校验。
+- **上位机无线提质与显示增强**：`UdpFrameReceiver` 在 `VCFG` 确认分辨率后支持 `VREQ02` 实时调节硬件 JPEG 质量（断流超时自动回退 `VREQA3` 重锁分辨率）；工具栏新增实时质量下拉框（`JPEG 锁定 30 / 24 / 20 / 16 / 自动 18～42`）；`VideoWidget` 开启 `SmoothPixmapTransform` 平滑缩放，参数设置页新增可开关的纯向量化“画面清晰度增强（去灰/轻锐化）”。
+- **三路/双路实测（Redmi K70E 2.4 GHz，640×480）**：双机自动清晰档（`q=18~42`）真实 Qt 窗口稳定 **18.75～19.00 fps（逐秒最低 16～17 fps）**；三机并发锁定 `q=30` 实测 **10.7 / 12.0～13.3 / 13.2～15.3 fps（0 零帧秒、0 重连）**。
+
 ---
 
 ## 4. 工程目录与回归测试
@@ -59,14 +64,14 @@
 | 目录 | 用途 |
 | --- | --- |
 | `host/` | Qt 6.10.1 / OpenCV 4.12 上位机（主程序 + 单元测试 + `profile_live` 实机验收器） |
-| `esp32cam/` | ESP32-CAM 采集与 `adaptive-udp-v25` 无线图传固件 |
+| `esp32cam/` | ESP32-CAM 采集与 `adaptive-udp-v26` 无线图传固件 |
 | `tools/` | UDP 发送策略原生测试、流指标与 VID1 Python 回归、模拟器 |
-| `docs/`、`output/` | 设计说明、通信协议、课程汇报材料与 v25 基线实测原始证据 |
+| `docs/`、`output/` | 设计说明、通信协议、课程汇报材料与实测原始证据 |
 | `stm32/` | 历史云台下位机方案（保留，未接入当前主线） |
 
-当前软件回归状态（2026-11-23 实跑）：
-- `host/build/run/core_test.exe`：**28 passed, 0 failed**（1 个可选外部 HTTP 用例跳过）
-- `host/build/run/monitor_test.exe`：**20 passed, 0 failed**（含新增 ROI 多尺度跟踪、固定 ID 与布局测试）
+当前软件回归状态（2026-11-27 实跑）：
+- `host/build/run/core_test.exe`：**29 passed, 0 failed**（含无线高清切换与超时重锁用例；1 个可选外部 HTTP 用例跳过）
+- `host/build/run/monitor_test.exe`：**20 passed, 0 failed**（含 ROI 多尺度跟踪、固定 ID 与布局测试）
 - `host/build/run/profile_switch_test.exe`：**5 passed, 0 failed**
 - `tools/test_udp_send_policy.cpp`：**passed**（含 AIMD 退让/恢复与首片早退检查）
 - `tools/test_stream_metrics.py` & `tools/test_vid1.py`：**16 passed, 0 failed**

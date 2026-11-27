@@ -58,6 +58,7 @@ public slots:
     void resetBaseline();
     void setThresholds(const MonitorThresholds &th);
     void setShowMask(bool show);
+    void setImageEnhance(bool enable);
     void pickTarget(int x, int y);
     void selectTargetRoi(const QRect &roi);
     void pickColor(int x, int y);
@@ -89,6 +90,7 @@ private:
     cv::Mat m_lastFrame;
     Detection m_lastDetection;
     bool m_showMask = false;
+    bool m_imageEnhance = false;
     qint64 m_fpsWindowStart = -1;
     int m_fpsFrames = 0;
     double m_fps = 0.0;
@@ -116,6 +118,7 @@ public:
     void resetBaseline();
     void setThresholds(const MonitorThresholds &th);
     void setShowMask(bool show);
+    void setImageEnhance(bool enable);
     void pickTarget(int x, int y);
     void selectTargetRoi(const QRect &roi);
     void pickColor(int x, int y);  // 图像坐标

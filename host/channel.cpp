@@ -18,6 +18,19 @@ QImage toQImage(const cv::Mat &bgr)
     return image;
 }
 
+cv::Mat enhanceForDisplay(const cv::Mat &bgr)
+{
+    if (bgr.empty() || bgr.type() != CV_8UC3) return bgr;
+    cv::Mat blurred, sharp, contrasted, gray, gray3, out;
+    cv::GaussianBlur(bgr, blurred, cv::Size(3, 3), 0.9);
+    cv::addWeighted(bgr, 1.32, blurred, -0.32, 0.0, sharp);
+    sharp.convertTo(contrasted, -1, 1.10, -10.0);
+    cv::cvtColor(contrasted, gray, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(gray, gray3, cv::COLOR_GRAY2BGR);
+    cv::addWeighted(contrasted, 1.22, gray3, -0.22, 0.0, out);
+    return out;
+}
+
 QImage maskToQImage(const cv::Mat &mask)
 {
     return QImage(mask.data, mask.cols, mask.rows, int(mask.step), QImage::Format_Grayscale8).copy();
@@ -130,6 +143,11 @@ void ChannelWorker::setShowMask(bool show)
     m_autoDetector.setComputeMask(show);
 }
 
+void ChannelWorker::setImageEnhance(bool enable)
+{
+    m_imageEnhance = enable;
+}
+
 void ChannelWorker::pickTarget(int x, int y)
 {
     resetBaseline();
@@ -218,7 +236,7 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
     if (m_pending->load() >= kMaxPendingResults)
         return;
 
-    result.image = toQImage(bgr);
+    result.image = toQImage(m_imageEnhance ? enhanceForDisplay(bgr) : bgr);
     if (m_showMask) {
         const cv::Mat mask = (m_mode == AutoContour) ? m_autoDetector.lastMask()
                                                      : m_blobDetector.lastMask();
@@ -321,6 +339,12 @@ void Channel::setThresholds(const MonitorThresholds &th)
 void Channel::setShowMask(bool show)
 {
     QMetaObject::invokeMethod(m_worker, [w = m_worker, show] { w->setShowMask(show); },
+                              Qt::QueuedConnection);
+}
+
+void Channel::setImageEnhance(bool enable)
+{
+    QMetaObject::invokeMethod(m_worker, [w = m_worker, enable] { w->setImageEnhance(enable); },
                               Qt::QueuedConnection);
 }
 

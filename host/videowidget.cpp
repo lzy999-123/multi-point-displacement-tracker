@@ -60,6 +60,7 @@ void VideoWidget::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
     p.fillRect(rect(), QColor(24, 24, 24));
 
     const QRectF target = imageRect();

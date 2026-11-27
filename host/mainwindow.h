@@ -32,6 +32,7 @@ public:
     void openChannel(int index, const QUrl &url);
     void setChannelUnavailable(int index, const QString &reason);
     void setVideoProfile(int profile);
+    void setJpegQualityMode(int qualityMode);
     int videoProfile() const { return m_videoProfile; }
 
 private:
@@ -78,6 +79,8 @@ private:
 
     QString m_settingsPath;
     int m_videoProfile = 0;
+    int m_jpegQualityMode = 30; // 10..40 = 锁定指定硬件JPEG质量，-1 = 自适应18~42
+    QComboBox *m_comboQuality = nullptr;
     QLabel *m_profileLabel = nullptr;
     std::array<ChannelUi, kChannelCount> m_channels;
     DeviceDiscovery m_discovery;
@@ -93,6 +96,7 @@ private:
     QSpinBox *m_spinMinArea = nullptr;
     QComboBox *m_comboMode = nullptr;
     QCheckBox *m_chkShowMask = nullptr;
+    QCheckBox *m_chkEnhance = nullptr;
     QCheckBox *m_chkBeep = nullptr;
     QCheckBox *m_chkAutoSnap = nullptr;
 

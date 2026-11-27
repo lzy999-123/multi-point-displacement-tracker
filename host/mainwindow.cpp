@@ -36,6 +36,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     m_videoProfile = savedProfile == QStringLiteral("svga") ? VideoProfile::Svga
         : savedProfile == QStringLiteral("vga12") ? VideoProfile::Vga12 : VideoProfile::Qvga25;
     settings.setValue(QStringLiteral("video/profile"), videoProfileKey(m_videoProfile));
+    const int savedQuality = settings.value(QStringLiteral("video/jpegQuality"), 30).toInt();
+    m_jpegQualityMode = (savedQuality == -1 || (savedQuality >= 10 && savedQuality <= 40)) ? savedQuality : 30;
+    settings.setValue(QStringLiteral("video/jpegQuality"), m_jpegQualityMode);
     setWindowTitle(tr("三视角固定机位藏品异动监测（ESP32 无线图传）"));
 
     auto *toolbar = addToolBar(tr("设备与控制"));
@@ -58,9 +61,28 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
         toolbar->addWidget(button);
         connect(button, &QPushButton::clicked, this, [this, profile] { setVideoProfile(profile); });
     }
+    m_comboQuality = new QComboBox(this);
+    m_comboQuality->setObjectName(QStringLiteral("jpeg-quality-mode"));
+    m_comboQuality->setToolTip(tr("OV3660 硬件 JPEG 质量：数值越小画质越清晰（体积越大）"));
+    m_comboQuality->addItem(tr("JPEG 锁定 30"), 30);
+    m_comboQuality->addItem(tr("JPEG 锁定 24（更清）"), 24);
+    m_comboQuality->addItem(tr("JPEG 锁定 20（高清）"), 20);
+    m_comboQuality->addItem(tr("JPEG 锁定 16（超清）"), 16);
+    m_comboQuality->addItem(tr("JPEG 自动 18～42"), -1);
+    const int qIdx = m_comboQuality->findData(m_jpegQualityMode);
+    m_comboQuality->setCurrentIndex(qIdx >= 0 ? qIdx : 0);
+    connect(m_comboQuality, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        if (idx >= 0) setJpegQualityMode(m_comboQuality->itemData(idx).toInt());
+    });
+    toolbar->addSeparator();
+    toolbar->addWidget(m_comboQuality);
+
     const auto startupPreset = VideoProfile::preset(unsigned(m_videoProfile));
+    const QString qDesc = m_jpegQualityMode > 0
+        ? tr("锁定q=%1").arg(m_jpegQualityMode)
+        : tr("自动q=18～42");
     m_profileLabel = new QLabel(tr("UDP：%1×%2 · %3")
-        .arg(startupPreset.width).arg(startupPreset.height).arg(videoProfileCadence(m_videoProfile)), this);
+        .arg(startupPreset.width).arg(startupPreset.height).arg(qDesc), this);
     m_profileLabel->setObjectName(QStringLiteral("video-profile"));
     m_profileLabel->setToolTip(tr("同时切换三路相机；实际接收和显示速度由采集与网络决定"));
     toolbar->addWidget(m_profileLabel);
@@ -124,9 +146,11 @@ void MainWindow::setVideoProfile(int profile)
         if (auto *button = findChild<QPushButton *>(QStringLiteral("profile-") + videoProfileKey(candidate)))
             button->setChecked(candidate == profile);
     const auto profilePreset = VideoProfile::preset(unsigned(profile));
-    m_profileLabel->setText(tr("UDP：%1×%2 · %3 · JPEG质量%4～%5")
-        .arg(profilePreset.width).arg(profilePreset.height).arg(videoProfileCadence(profile))
-        .arg(profilePreset.minimumQuality).arg(profilePreset.maximumQuality));
+    const QString qDesc = m_jpegQualityMode > 0
+        ? tr("锁定q=%1").arg(m_jpegQualityMode)
+        : tr("自动q=18～42");
+    m_profileLabel->setText(tr("UDP：%1×%2 · %3")
+        .arg(profilePreset.width).arg(profilePreset.height).arg(qDesc));
     QSettings settings(m_settingsPath, QSettings::IniFormat);
     settings.setValue(QStringLiteral("video/profile"), videoProfileKey(profile));
     resetAllBaselines();
@@ -138,8 +162,38 @@ void MainWindow::setVideoProfile(int profile)
     }
     const auto preset = VideoProfile::preset(unsigned(profile));
     appendLog(tr("切换全部机位至 %1×%2 / %3（UDP），请重新锁定基准")
-                  .arg(preset.width).arg(preset.height).arg(videoProfileCadence(profile)));
+                  .arg(preset.width).arg(preset.height).arg(qDesc));
     statusBar()->showMessage(tr("正在切换相机分辨率；画面恢复后请重新锁定基准"), 6000);
+}
+
+void MainWindow::setJpegQualityMode(int qualityMode)
+{
+    if (qualityMode != -1 && (qualityMode < 10 || qualityMode > 40)) return;
+    if (qualityMode == m_jpegQualityMode) return;
+    m_jpegQualityMode = qualityMode;
+    QSettings settings(m_settingsPath, QSettings::IniFormat);
+    settings.setValue(QStringLiteral("video/jpegQuality"), m_jpegQualityMode);
+    const auto preset = VideoProfile::preset(unsigned(m_videoProfile));
+    const QString qDesc = m_jpegQualityMode > 0
+        ? tr("锁定q=%1").arg(m_jpegQualityMode)
+        : tr("自动q=18～42");
+    if (m_profileLabel) {
+        m_profileLabel->setText(tr("UDP：%1×%2 · %3")
+            .arg(preset.width).arg(preset.height).arg(qDesc));
+    }
+    for (int i = 0; i < kChannelCount; ++i) {
+        auto &ui = m_channels[i];
+        if (!ui.channel->isOpen()) continue;
+        QUrl url = ui.channel->url();
+        if (!QHostAddress(url.host()).isLoopback()) {
+            QUrlQuery query(url);
+            query.removeAllQueryItems(QStringLiteral("hqq"));
+            query.addQueryItem(QStringLiteral("hqq"), QString::number(m_jpegQualityMode));
+            url.setQuery(query);
+            openChannel(i, url);
+        }
+    }
+    appendLog(tr("已切换无线 JPEG 质量模式：%1（OV3660 数值越小越清晰）").arg(qDesc));
 }
 
 QWidget *MainWindow::buildChannelPanel(int index)
@@ -413,6 +467,8 @@ QWidget *MainWindow::buildMonitorDashboard()
     m_comboMode->addItem(tr("HSV 颜色色块 (向后兼容)"));
 
     m_chkShowMask = new QCheckBox(tr("在画面中显示处理掩膜 / 轮廓边缘"), settingsTab);
+    m_chkEnhance = new QCheckBox(tr("画面清晰度增强（去灰 / 轻锐化）"), settingsTab);
+    m_chkEnhance->setChecked(true);
     m_chkBeep = new QCheckBox(tr("异动确认时发出提示音"), settingsTab);
     m_chkBeep->setChecked(true);
     m_chkAutoSnap = new QCheckBox(tr("多视角确认告警时自动保存现场截图"), settingsTab);
@@ -425,6 +481,7 @@ QWidget *MainWindow::buildMonitorDashboard()
     form->addRow(tr("检测算法模式"), m_comboMode);
     setLayout->addLayout(form);
     setLayout->addWidget(m_chkShowMask);
+    setLayout->addWidget(m_chkEnhance);
     setLayout->addWidget(m_chkBeep);
     setLayout->addWidget(m_chkAutoSnap);
     setLayout->addStretch();
@@ -445,6 +502,11 @@ QWidget *MainWindow::buildMonitorDashboard()
         for (auto &c : m_channels) {
             c.channel->setShowMask(show);
             c.video->setShowMask(show);
+        }
+    });
+    connect(m_chkEnhance, &QCheckBox::toggled, this, [this](bool enable) {
+        for (auto &c : m_channels) {
+            c.channel->setImageEnhance(enable);
         }
     });
 
@@ -819,6 +881,7 @@ void MainWindow::openChannel(int index, const QUrl &url)
     ui.channel->setAutoParams(ui.autoParams);
     ui.channel->setDetectorMode(m_comboMode ? m_comboMode->currentIndex() : 0);
     ui.channel->setShowMask(m_chkShowMask ? m_chkShowMask->isChecked() : false);
+    ui.channel->setImageEnhance(m_chkEnhance ? m_chkEnhance->isChecked() : false);
     ui.channel->setThresholds(m_thresholds);
     ui.channel->open(selectedUrl);
     updateFusionDecision();
@@ -895,6 +958,12 @@ void MainWindow::onDeviceFound(const DeviceDiscovery::Device &device)
     QUrlQuery query(streamUrl);
     if (!query.hasQueryItem(QStringLiteral("transport")))
         query.addQueryItem(QStringLiteral("transport"), QStringLiteral("simple"));
+    if (!device.address.isLoopback()) {
+        if (!query.hasQueryItem(QStringLiteral("hq")))
+            query.addQueryItem(QStringLiteral("hq"), QStringLiteral("1"));
+        query.removeAllQueryItems(QStringLiteral("hqq"));
+        query.addQueryItem(QStringLiteral("hqq"), QString::number(m_jpegQualityMode));
+    }
     query.removeAllQueryItems(QStringLiteral("id"));
     query.addQueryItem(QStringLiteral("id"), QString::number(device.id));
     streamUrl.setQuery(query);

@@ -70,9 +70,14 @@ public:
         m_reportMs = m_clock.elapsed();
         m_requestedProfile = videoProfileFromUrl(url);
         m_profileConfirmed = false;
+        m_hqTuneRequested = false;
+        m_hqTuneActive = false;
+        m_profileHeartbeat.clear();
+        m_hqHeartbeat.clear();
         m_profileGeneration = quint16(QRandomGenerator::global()->generate());
         const QUrlQuery query(url);
         m_transportFlags = query.queryItemValue(QStringLiteral("transport")) == QStringLiteral("simple") ? 3 : 0;
+        const bool wantHq = query.queryItemValue(QStringLiteral("hq")) == QStringLiteral("1");
         bool hasExpectedId = false;
         const int parsedId = query.queryItemValue(QStringLiteral("id")).toInt(&hasExpectedId);
         m_expectedDeviceId = (hasExpectedId && parsedId >= 1 && parsedId <= 3) ? quint8(parsedId) : 0;
@@ -101,6 +106,31 @@ public:
             m_heartbeatPacket.append(char(m_profileGeneration & 0xff));
             m_heartbeatPacket.append(char(m_profileGeneration >> 8));
             m_heartbeatPacket.append(char(m_transportFlags));
+            m_profileHeartbeat = m_heartbeatPacket;
+            if (wantHq && (m_transportFlags & 1)) {
+                m_hqTuneRequested = true;
+                bool hasHqq = false;
+                const int hqq = query.queryItemValue(QStringLiteral("hqq")).toInt(&hasHqq);
+                uint8_t qmin = preset.minimumQuality;
+                uint8_t qmax = preset.maximumQuality;
+                uint16_t hqTarget = preset.targetBytes;
+                if (hasHqq && hqq >= 10 && hqq <= 40) {
+                    qmin = uint8_t(hqq);
+                    qmax = uint8_t(hqq);
+                    hqTarget = 16000;
+                } else if (hasHqq && hqq < 0 && m_requestedProfile == VideoProfile::Vga12) {
+                    qmin = 18;
+                    qmax = 42;
+                    hqTarget = 10500;
+                }
+                m_hqHeartbeat = QByteArrayLiteral("VREQ02");
+                m_hqHeartbeat.append(char(VideoProfile::hqTuneFps(unsigned(m_requestedProfile))));
+                m_hqHeartbeat.append(char(qmin));
+                m_hqHeartbeat.append(char(qmax));
+                m_hqHeartbeat.append(char(0));
+                m_hqHeartbeat.append(char(hqTarget & 0xff));
+                m_hqHeartbeat.append(char(hqTarget >> 8));
+            }
         }
 
         // Prefer the most specific subnet over a VPN's broad route.
@@ -141,6 +171,12 @@ public:
     void recover()
     {
         resetFrames();
+        if (m_hqTuneRequested && !m_profileHeartbeat.isEmpty()) {
+            // Re-lock sensor resolution via VREQA3 first in case the camera rebooted.
+            m_profileConfirmed = false;
+            m_hqTuneActive = false;
+            m_heartbeatPacket = m_profileHeartbeat;
+        }
         sendHeartbeat();
     }
 
@@ -245,6 +281,12 @@ private:
                     && quint8(data[12]) == preset.fps && data[13] == 0
                     && quint8(data[14]) == m_transportFlags && !m_profileConfirmed) {
                     m_profileConfirmed = true;
+                    if (m_hqTuneRequested && !m_hqHeartbeat.isEmpty()) {
+                        m_hqTuneActive = true;
+                        m_heartbeatPacket = m_hqHeartbeat;
+                        if (m_socket->state() == QAbstractSocket::BoundState)
+                            m_socket->writeDatagram(m_heartbeatPacket, m_peerAddress, m_peerPort);
+                    }
                     m_profileApplied(m_requestedProfile);
                 }
                 continue;
@@ -252,10 +294,13 @@ private:
             if (data.size() < int(sizeof(VidPacketHeader))) continue;
             VidPacketHeader hdr;
             std::memcpy(&hdr, data.constData(), sizeof(hdr));
+            const bool profileTagOk = m_requestedProfile < 0
+                || hdr.reserved == m_requestedProfile + 1
+                || (m_hqTuneActive && hdr.reserved == 0);
             if (hdr.magic != 0x31444956 || hdr.device_id < 1 || hdr.device_id > 3
                 || (m_expectedDeviceId != 0 && hdr.device_id != m_expectedDeviceId)
                 || (m_deviceId != 0 && hdr.device_id != m_deviceId)
-                || (m_requestedProfile >= 0 && hdr.reserved != m_requestedProfile + 1)
+                || !profileTagOk
                 || hdr.frame_size == 0 || hdr.frame_size > kMaxFrameSize) continue;
             const int expectedCount = (int(hdr.frame_size) + kMaxChunkPayload - 1) / kMaxChunkPayload;
             if (hdr.chunk_count != expectedCount || hdr.chunk_index >= hdr.chunk_count) continue;
@@ -348,11 +393,15 @@ private:
     QTimer *m_heartbeat;
     QTimer *m_repairTimer;
     QByteArray m_heartbeatPacket;
+    QByteArray m_profileHeartbeat;
+    QByteArray m_hqHeartbeat;
     const std::function<void()> m_notify;
     const std::function<void(int)> m_profileApplied;
     int m_requestedProfile = -1;
     quint16 m_profileGeneration = 0;
     bool m_profileConfirmed = false;
+    bool m_hqTuneRequested = false;
+    bool m_hqTuneActive = false;
     quint8 m_transportFlags = 0;
     QElapsedTimer m_clock;
     QHostAddress m_peerAddress;
