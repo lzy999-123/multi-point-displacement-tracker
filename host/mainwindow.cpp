@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include <cmath>
 #include <QApplication>
 #include <QCheckBox>
 #include <QButtonGroup>
@@ -39,7 +40,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     const int savedQuality = settings.value(QStringLiteral("video/jpegQuality"), 30).toInt();
     m_jpegQualityMode = (savedQuality == -1 || (savedQuality >= 10 && savedQuality <= 40)) ? savedQuality : 30;
     settings.setValue(QStringLiteral("video/jpegQuality"), m_jpegQualityMode);
-    setWindowTitle(tr("三视角固定机位藏品异动监测（ESP32 无线图传）"));
+    setWindowTitle(tr("多检测点特征跟踪系统（ESP32 三视角无线图传）"));
 
     auto *toolbar = addToolBar(tr("设备与控制"));
     toolbar->setMovable(false);
@@ -86,6 +87,24 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     m_profileLabel->setObjectName(QStringLiteral("video-profile"));
     m_profileLabel->setToolTip(tr("同时切换三路相机；实际接收和显示速度由采集与网络决定"));
     toolbar->addWidget(m_profileLabel);
+    toolbar->addSeparator();
+
+    m_chkCrossViewSync = new QCheckBox(tr("三路联动锁定"), this);
+    m_chkCrossViewSync->setObjectName(QStringLiteral("cross-view-sync"));
+    m_chkCrossViewSync->setToolTip(tr("开启后，在任意一路框选目标，其余两路自动按外观特征全图搜索并同步锁定；关闭则三路独立框选"));
+    m_chkCrossViewSync->setChecked(settings.value(QStringLiteral("tracking/crossViewSync"), true).toBool());
+    connect(m_chkCrossViewSync, &QCheckBox::toggled, this, [this](bool checked) {
+        QSettings saved(m_settingsPath, QSettings::IniFormat);
+        saved.setValue(QStringLiteral("tracking/crossViewSync"), checked);
+        appendLog(checked ? tr("已开启三路联动锁定：任一路框选目标将自动同步至其余检测点")
+                          : tr("已切换为三路独立框选模式"));
+    });
+    toolbar->addWidget(m_chkCrossViewSync);
+
+    auto *btnClearAll = new QPushButton(tr("清除全部"), this);
+    btnClearAll->setToolTip(tr("一键清除所有检测点的锁定目标与运动轨迹"));
+    connect(btnClearAll, &QPushButton::clicked, this, &MainWindow::clearAllTargets);
+    toolbar->addWidget(btnClearAll);
 
     connect(m_discoveryButton, &QPushButton::clicked, this, [this] {
         if (m_discovery.isRunning()) {
@@ -131,8 +150,8 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     connect(&m_monitorTimer, &QTimer::timeout, this, &MainWindow::updateFusionDecision);
     m_monitorTimer.start();
     updateFusionDecision();
-    statusBar()->showMessage(tr("操作顺序：连接三路 ESP32 无线画面 → 拖拽框选（或点击）目标 → 锁定基准开始监测"));
-    appendLog(tr("三视角藏品异动监测就绪（仅接收 ESP32 无线 UDP 图传）：拖拽框选或点击目标后锁定基准。"));
+    statusBar()->showMessage(tr("操作说明：左键在任意一路拖拽框选目标，三路自动联动锁定并实时跟踪（右键清除单路，顶栏可开关联动）"));
+    appendLog(tr("多检测点特征跟踪系统就绪（三路联动锁定已开启）：在任意一路左键框选目标，其余两路将自动按特征同步锁定。"));
     setFixedSize(sizeHint());
 }
 
@@ -199,7 +218,7 @@ void MainWindow::setJpegQualityMode(int qualityMode)
 QWidget *MainWindow::buildChannelPanel(int index)
 {
     ChannelUi &ui = m_channels[index];
-    auto *box = new QGroupBox(tr("监测机位 %1（ESP32 无线）").arg(index + 1), this);
+    auto *box = new QGroupBox(tr("检测点 %1（ESP32 无线）").arg(index + 1), this);
     ui.panelBox = box;
     box->setFixedSize(560, 418);
     auto *layout = new QVBoxLayout(box);
@@ -208,14 +227,14 @@ QWidget *MainWindow::buildChannelPanel(int index)
 
     ui.channel = new Channel(index + 1, this);
     ui.channel->setDetectorMode(ChannelWorker::AutoContour);
-    ui.video = new VideoWidget(tr("机位 %1 视角").arg(index + 1), box);
+    ui.video = new VideoWidget(tr("检测点 %1 视角").arg(index + 1), box);
     ui.video->setObjectName(QStringLiteral("video-%1").arg(index + 1));
     ui.video->setStatus(tr("未连接"));
     layout->addWidget(ui.video, 0, Qt::AlignHCenter);
 
     auto *row = new QHBoxLayout;
-    row->setContentsMargins(34, 0, 34, 0);
-    row->setSpacing(10);
+    row->setContentsMargins(24, 0, 24, 0);
+    row->setSpacing(8);
 
     auto *rotate = new QCheckBox(tr("旋转180°"), box);
     rotate->setObjectName(QStringLiteral("rotate180-%1").arg(index + 1));
@@ -231,8 +250,14 @@ QWidget *MainWindow::buildChannelPanel(int index)
         saved.setValue(rotationKey, checked);
     });
 
+    ui.clearButton = new QPushButton(tr("清除"), box);
+    ui.clearButton->setToolTip(tr("清除当前检测点锁定目标与轨迹（也可直接在画面右键清除）"));
+    connect(ui.clearButton, &QPushButton::clicked, this, [this, index] {
+        clearSingleChannelTarget(index);
+    });
+
     ui.calibrateButton = new QPushButton(tr("📷 标定"), box);
-    ui.calibrateButton->setToolTip(tr("将当前机位画面目标锁定为基准形态"));
+    ui.calibrateButton->setToolTip(tr("锁定当前特征目标为基准形态，开启异动告警"));
     connect(ui.calibrateButton, &QPushButton::clicked, this, [this, index] {
         calibrateSingleChannel(index);
     });
@@ -241,6 +266,7 @@ QWidget *MainWindow::buildChannelPanel(int index)
 
     row->addWidget(rotate);
     row->addStretch(1);
+    row->addWidget(ui.clearButton);
     row->addWidget(ui.calibrateButton);
     row->addWidget(ui.connectButton);
     layout->addLayout(row);
@@ -257,13 +283,20 @@ QWidget *MainWindow::buildChannelPanel(int index)
             ui.video->setResult(r);
             ui.lastAnomaly = r.anomaly;
             ui.hasTarget = r.hasTarget;
+            ui.trackingActive = r.trackingActive;
             ui.baselineSet = r.baselineCalibrated;
+            ui.lastTargetCenter = r.targetCenter;
+            ui.lastDeltaX = r.deltaX;
+            ui.lastDeltaY = r.deltaY;
+            ui.lastDisplacement = r.displacement;
+            ui.lastSpeed = r.speedPxPerSec;
+            ui.lastScaleRatio = r.scaleRatio;
             ui.observedAtMs = r.observedAtMs;
             ui.streamAvailable = true;
             ui.lastFps = r.fps;
             ui.lastImageSize = r.image.size();
             if (ui.panelBox) {
-                ui.panelBox->setTitle(tr("监测机位 %1（ESP32 无线 · %2×%3 · %4 fps）")
+                ui.panelBox->setTitle(tr("检测点 %1（ESP32 无线 · %2×%3 · %4 fps）")
                                           .arg(index + 1)
                                           .arg(r.image.width()).arg(r.image.height())
                                           .arg(r.fps, 0, 'f', 1));
@@ -281,15 +314,24 @@ QWidget *MainWindow::buildChannelPanel(int index)
     connect(ui.channel, &Channel::videoProfileApplied, this, [this, index](int profile) {
         if (profile != m_videoProfile) return;
         const auto preset = VideoProfile::preset(unsigned(profile));
-        appendLog(tr("机位 %1 已确认：%2×%3，%4，UDP")
+        appendLog(tr("检测点 %1 已确认：%2×%3，%4，UDP")
                       .arg(index + 1).arg(preset.width).arg(preset.height).arg(videoProfileCadence(profile)));
     });
     connect(ui.channel, &Channel::calibrationFinished, this,
             [this, index](quint64 revision, bool success, const QString &reason) {
         if (revision != m_channels[index].channel->revision()) return;
-        appendLog(tr("机位 %1 基准%2：%3").arg(index + 1)
+        appendLog(tr("检测点 %1 基准%2：%3").arg(index + 1)
                       .arg(success ? tr("锁定完成") : tr("未锁定")).arg(reason));
         statusBar()->showMessage(reason, 4000);
+    });
+    connect(ui.channel, &Channel::targetSignatureExtracted, this,
+            [this, index](quint64 revision, const TargetSignature &sig) {
+        if (revision != m_channels[index].channel->revision()) return;
+        broadcastTargetSignature(index, sig);
+    });
+
+    connect(ui.video, &VideoWidget::clearRequested, this, [this, index] {
+        clearSingleChannelTarget(index);
     });
 
     connect(ui.video, &VideoWidget::imageClicked, this, [this, index](int x, int y) {
@@ -301,10 +343,10 @@ QWidget *MainWindow::buildChannelPanel(int index)
         }
         ui.baselineSet = false;
         ui.lastAnomaly = {};
-        ui.video->setMonitoringUnavailable(tr("正在重新选目标，请重新锁定基准"));
+        ui.trackingActive = true;
         m_channels[index].channel->pickTarget(x, y);
         updateFusionDecision();
-        statusBar()->showMessage(tr("机位 %1：已发送点选 (%2, %3)，看到目标框后再锁定基准")
+        statusBar()->showMessage(tr("检测点 %1：已点选 (%2, %3)，实时跟踪已启动（右键可清除）")
                                     .arg(index + 1).arg(x).arg(y), 4000);
     });
 
@@ -317,12 +359,12 @@ QWidget *MainWindow::buildChannelPanel(int index)
         }
         ui.baselineSet = false;
         ui.lastAnomaly = {};
-        ui.video->setMonitoringUnavailable(tr("已框选目标，请点击【标定】锁定基准"));
+        ui.trackingActive = true;
         m_channels[index].channel->selectTargetRoi(roi);
         updateFusionDecision();
-        appendLog(tr("机位 %1 已框选目标区域 (%2, %3, %4×%5)，等待锁定基准")
+        appendLog(tr("检测点 %1 已锁定特征目标 (%2, %3, %4×%5)，CSRT 多特征实时跟踪已启动")
                       .arg(index + 1).arg(roi.x()).arg(roi.y()).arg(roi.width()).arg(roi.height()));
-        statusBar()->showMessage(tr("机位 %1：已框选目标 (%2×%3)，请点击【标定】或【一键锁定基准】")
+        statusBar()->showMessage(tr("检测点 %1：已锁定目标 (%2×%3)，实时跟踪中（右键清除，点【标定】可启用告警）")
                                     .arg(index + 1).arg(roi.width()).arg(roi.height()), 5000);
     });
 
@@ -331,7 +373,7 @@ QWidget *MainWindow::buildChannelPanel(int index)
 
 QWidget *MainWindow::buildMonitorDashboard()
 {
-    auto *box = new QGroupBox(tr("藏品监测状态与控制"), this);
+    auto *box = new QGroupBox(tr("多检测点跟踪状态与控制"), this);
     box->setFixedSize(560, 418);
     auto *rootLayout = new QVBoxLayout(box);
     rootLayout->setContentsMargins(6, 4, 6, 6);
@@ -340,27 +382,27 @@ QWidget *MainWindow::buildMonitorDashboard()
     auto *tabs = new QTabWidget(box);
     rootLayout->addWidget(tabs);
 
-    // ==================== 标签 1：实时监控（简洁主视窗） ====================
+    // ==================== 标签 1：实时跟踪与监控（主视窗） ====================
     auto *monitorTab = new QWidget(tabs);
     auto *monLayout = new QVBoxLayout(monitorTab);
     monLayout->setContentsMargins(6, 6, 6, 6);
     monLayout->setSpacing(6);
 
     // 1. 总览状态横幅
-    m_lblFusionStatus = new QLabel(tr("⚪ 系统待命：请框选目标并锁定基准"), monitorTab);
+    m_lblFusionStatus = new QLabel(tr("⚪ 系统待命：左键框选目标即开始实时跟踪"), monitorTab);
     m_lblFusionStatus->setObjectName(QStringLiteral("fusion-status"));
     m_lblFusionStatus->setWordWrap(true);
     m_lblFusionStatus->setFixedHeight(44);
     m_lblFusionStatus->setAlignment(Qt::AlignCenter);
     m_lblFusionStatus->setStyleSheet(QStringLiteral(
-        "background-color: #546e7a; color: #ffffff; font-weight: bold; font-size: 10.5pt; padding: 4px 8px; border-radius: 5px;"));
+        "background-color: #546e7a; color: #ffffff; font-weight: bold; font-size: 10pt; padding: 4px 8px; border-radius: 5px;"));
     monLayout->addWidget(m_lblFusionStatus);
 
-    m_lblFusionDetail = new QLabel(tr("三路固定机位就绪"), monitorTab);
+    m_lblFusionDetail = new QLabel(tr("三路检测点就绪"), monitorTab);
     m_lblFusionDetail->setObjectName(QStringLiteral("fusion-detail"));
     m_lblFusionDetail->setVisible(false);
 
-    // 2. 三路机位独立状态卡片（替代画面内的遮挡黑框）
+    // 2. 三路检测点独立状态卡片（实时坐标、位移、速度与异常状态）
     auto *cardsLayout = new QVBoxLayout;
     cardsLayout->setSpacing(4);
     for (int i = 0; i < kChannelCount; ++i) {
@@ -370,20 +412,20 @@ QWidget *MainWindow::buildMonitorDashboard()
             "QWidget { background-color: #f3f5f8; border: 1px solid #dce2ea; border-radius: 4px; }"));
         auto *row = new QHBoxLayout(card);
         row->setContentsMargins(8, 3, 8, 3);
-        row->setSpacing(8);
+        row->setSpacing(6);
 
-        auto *nameLbl = new QLabel(tr("机位 %1").arg(i + 1), card);
-        nameLbl->setFixedWidth(44);
+        auto *nameLbl = new QLabel(tr("检测点%1").arg(i + 1), card);
+        nameLbl->setFixedWidth(48);
         nameLbl->setStyleSheet(QStringLiteral("border: none; background: transparent; font-weight: bold; color: #263238;"));
 
         auto *badge = new QLabel(tr("未连接"), card);
-        badge->setFixedSize(96, 22);
+        badge->setFixedSize(82, 22);
         badge->setAlignment(Qt::AlignCenter);
         badge->setStyleSheet(QStringLiteral(
             "border: none; background-color: #78909c; color: white; font-weight: bold; font-size: 8.5pt; border-radius: 3px;"));
 
         auto *detail = new QLabel(tr("等待 ESP32 无线连接…"), card);
-        detail->setStyleSheet(QStringLiteral("border: none; background: transparent; color: #37474f; font-size: 9pt;"));
+        detail->setStyleSheet(QStringLiteral("border: none; background: transparent; color: #37474f; font-size: 8.5pt;"));
 
         row->addWidget(nameLbl);
         row->addWidget(badge);
@@ -398,45 +440,52 @@ QWidget *MainWindow::buildMonitorDashboard()
     // 3. 快捷操作条
     auto *actionRow = new QHBoxLayout;
     actionRow->setSpacing(6);
-    m_btnCalibAll = new QPushButton(tr("📷 一键锁定全部基准"), monitorTab);
+    m_btnCalibAll = new QPushButton(tr("📷 锁定基准"), monitorTab);
+    m_btnCalibAll->setToolTip(tr("将三路当前跟踪目标锁定为基准形态，启用多视角异常告警"));
     m_btnCalibAll->setStyleSheet(QStringLiteral(
         "background-color: #0288d1; color: white; font-weight: bold; padding: 5px 10px; border-radius: 4px;"));
+    auto *btnZeroTrack = new QPushButton(tr("轨迹归零"), monitorTab);
+    btnZeroTrack->setToolTip(tr("将当前目标位置设为位移原点，并清空运动轨迹尾迹"));
+    btnZeroTrack->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
     m_btnResetAll = new QPushButton(tr("重置基准"), monitorTab);
     m_btnResetAll->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
     auto *btnExportLog = new QPushButton(tr("导出日志"), monitorTab);
+    btnExportLog->setToolTip(tr("导出运行与告警事件日志"));
     btnExportLog->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
     auto *btnClearLog = new QPushButton(tr("清空"), monitorTab);
     btnClearLog->setMaximumWidth(52);
     btnClearLog->setStyleSheet(QStringLiteral("padding: 5px 6px;"));
     actionRow->addWidget(m_btnCalibAll, 2);
+    actionRow->addWidget(btnZeroTrack, 1);
     actionRow->addWidget(m_btnResetAll, 1);
     actionRow->addWidget(btnExportLog);
     actionRow->addWidget(btnClearLog);
     monLayout->addLayout(actionRow);
 
     connect(m_btnCalibAll, &QPushButton::clicked, this, &MainWindow::calibrateAllBaselines);
+    connect(btnZeroTrack, &QPushButton::clicked, this, &MainWindow::resetAllTrajectories);
     connect(m_btnResetAll, &QPushButton::clicked, this, &MainWindow::resetAllBaselines);
     connect(btnExportLog, &QPushButton::clicked, this, &MainWindow::exportEventLog);
     connect(btnClearLog, &QPushButton::clicked, this, [this] { m_txtEventLog->clear(); });
 
-    // 4. 异动事件记录（占据底部主要空间，清晰易读）
+    // 4. 事件与跟踪记录（占据底部主要空间，清晰易读）
     m_txtEventLog = new QPlainTextEdit(monitorTab);
     m_txtEventLog->setReadOnly(true);
-    m_txtEventLog->setPlaceholderText(tr("目标发生变大、变小、移动、倾斜或消失时将在此记录…"));
+    m_txtEventLog->setPlaceholderText(tr("多检测点目标跟踪、位移/尺度变化、丢失重找与告警事件将在此记录…"));
     m_txtEventLog->setStyleSheet(QStringLiteral(
         "background-color: #1c2026; color: #cfd8dc; font-family: Consolas, 'Microsoft YaHei UI', monospace; font-size: 8.5pt; border-radius: 4px;"));
     monLayout->addWidget(m_txtEventLog, 1);
 
-    tabs->addTab(monitorTab, tr("实时监控"));
+    tabs->addTab(monitorTab, tr("实时跟踪与监控"));
 
     // ==================== 标签 2：参数设置（收起不占视线） ====================
     auto *settingsTab = new QWidget(tabs);
     auto *setLayout = new QVBoxLayout(settingsTab);
-    setLayout->setContentsMargins(12, 12, 12, 12);
-    setLayout->setSpacing(10);
+    setLayout->setContentsMargins(10, 8, 10, 8);
+    setLayout->setSpacing(6);
 
     auto *form = new QFormLayout;
-    form->setSpacing(8);
+    form->setSpacing(6);
 
     m_spinTiltThresh = new QDoubleSpinBox(settingsTab);
     m_spinTiltThresh->setRange(1.0, 45.0);
@@ -463,16 +512,14 @@ QWidget *MainWindow::buildMonitorDashboard()
     m_spinMinArea->setSuffix(tr(" 像素"));
 
     m_comboMode = new QComboBox(settingsTab);
-    m_comboMode->addItem(tr("智能锁定（框选目标 / 点选轮廓）"));
+    m_comboMode->addItem(tr("CSRT 多特征跟踪（推荐：框选即跟、防串色）"));
     m_comboMode->addItem(tr("HSV 颜色色块 (向后兼容)"));
 
+    m_chkShowTrajectory = new QCheckBox(tr("在画面中显示目标实时运动轨迹"), settingsTab);
+    m_chkShowTrajectory->setChecked(true);
     m_chkShowMask = new QCheckBox(tr("在画面中显示处理掩膜 / 轮廓边缘"), settingsTab);
     m_chkEnhance = new QCheckBox(tr("画面清晰度增强（去灰 / 轻锐化）"), settingsTab);
     m_chkEnhance->setChecked(true);
-    m_chkBeep = new QCheckBox(tr("异动确认时发出提示音"), settingsTab);
-    m_chkBeep->setChecked(true);
-    m_chkAutoSnap = new QCheckBox(tr("多视角确认告警时自动保存现场截图"), settingsTab);
-    m_chkAutoSnap->setChecked(true);
 
     form->addRow(tr("倾斜报警门限"), m_spinTiltThresh);
     form->addRow(tr("尺寸突变门限"), m_spinScaleThresh);
@@ -480,10 +527,9 @@ QWidget *MainWindow::buildMonitorDashboard()
     form->addRow(tr("最小目标面积"), m_spinMinArea);
     form->addRow(tr("检测算法模式"), m_comboMode);
     setLayout->addLayout(form);
+    setLayout->addWidget(m_chkShowTrajectory);
     setLayout->addWidget(m_chkShowMask);
     setLayout->addWidget(m_chkEnhance);
-    setLayout->addWidget(m_chkBeep);
-    setLayout->addWidget(m_chkAutoSnap);
     setLayout->addStretch();
 
     tabs->addTab(settingsTab, tr("参数设置"));
@@ -498,6 +544,11 @@ QWidget *MainWindow::buildMonitorDashboard()
         }
     });
     connect(m_comboMode, &QComboBox::currentIndexChanged, this, &MainWindow::applyDetectorMode);
+    connect(m_chkShowTrajectory, &QCheckBox::toggled, this, [this](bool show) {
+        for (auto &c : m_channels) {
+            c.video->setShowTrajectory(show);
+        }
+    });
     connect(m_chkShowMask, &QCheckBox::toggled, this, [this](bool show) {
         for (auto &c : m_channels) {
             c.channel->setShowMask(show);
@@ -521,12 +572,11 @@ void MainWindow::calibrateAllBaselines()
             && m_channels[i].observedAtMs >= 0
             && monitorNowMs() - m_channels[i].observedAtMs <= kMonitorFreshnessMs) {
             m_channels[i].baselineSet = false;
-            m_channels[i].video->setMonitoringUnavailable(tr("等待基准锁定确认"));
             m_channels[i].channel->calibrateBaseline();
             ++count;
         }
     }
-    appendLog(tr("已向 %1 路有新画面的机位请求锁定基准；等待各路确认").arg(count));
+    appendLog(tr("已向 %1 路在线检测点请求锁定基准；等待各路确认").arg(count));
     statusBar()->showMessage(tr("基准请求已发送；具体成功/失败见事件记录"), 5000);
     updateFusionDecision();
 }
@@ -537,10 +587,23 @@ void MainWindow::resetAllBaselines()
         m_channels[i].channel->resetBaseline();
         m_channels[i].baselineSet = false;
         m_channels[i].lastAnomaly = AnomalyMetrics();
-        m_channels[i].video->setMonitoringUnavailable(tr("基准已清除"));
     }
     m_lastReportedSignature.clear();
-    appendLog(tr("已清除所有机位的基准参考数据"));
+    appendLog(tr("已清除所有检测点的基准参考数据（保留当前实时跟踪）"));
+    updateFusionDecision();
+}
+
+void MainWindow::resetAllTrajectories()
+{
+    for (int i = 0; i < kChannelCount; ++i) {
+        m_channels[i].channel->resetTrajectoryOrigin();
+        m_channels[i].lastDeltaX = 0.0;
+        m_channels[i].lastDeltaY = 0.0;
+        m_channels[i].lastDisplacement = 0.0;
+        m_channels[i].lastSpeed = 0.0;
+    }
+    appendLog(tr("已归零所有检测点的位移原点并清空轨迹记录"));
+    statusBar()->showMessage(tr("位移原点与轨迹尾迹已归零"), 3000);
     updateFusionDecision();
 }
 
@@ -549,13 +612,83 @@ void MainWindow::calibrateSingleChannel(int index)
     if (index >= 0 && index < kChannelCount) {
         if (!m_channels[index].streamAvailable || m_channels[index].observedAtMs < 0
             || monitorNowMs() - m_channels[index].observedAtMs > kMonitorFreshnessMs) {
-            appendLog(tr("机位 %1 无近期新画面，未锁定基准").arg(index + 1));
+            appendLog(tr("检测点 %1 无近期新画面，未锁定基准").arg(index + 1));
             return;
         }
         m_channels[index].baselineSet = false;
-        m_channels[index].video->setMonitoringUnavailable(tr("等待基准锁定确认"));
         m_channels[index].channel->calibrateBaseline();
-        appendLog(tr("机位 %1 已请求锁定基准，等待确认").arg(index + 1));
+        appendLog(tr("检测点 %1 已请求锁定基准，等待确认").arg(index + 1));
+        updateFusionDecision();
+    }
+}
+
+void MainWindow::clearSingleChannelTarget(int index)
+{
+    if (index < 0 || index >= kChannelCount) return;
+    auto &ui = m_channels[index];
+    ui.channel->clearTarget();
+    ui.hasTarget = false;
+    ui.trackingActive = false;
+    ui.baselineSet = false;
+    ui.lastAnomaly = {};
+    ui.lastTargetCenter = QPointF();
+    ui.lastDeltaX = 0.0;
+    ui.lastDeltaY = 0.0;
+    ui.lastDisplacement = 0.0;
+    ui.lastSpeed = 0.0;
+    ui.lastScaleRatio = 1.0;
+    appendLog(tr("检测点 %1 已清除锁定目标与运动轨迹").arg(index + 1));
+    statusBar()->showMessage(tr("检测点 %1 目标已清除，可重新左键拖拽框选").arg(index + 1), 3000);
+    updateFusionDecision();
+}
+
+void MainWindow::clearAllTargets()
+{
+    for (int i = 0; i < kChannelCount; ++i) {
+        auto &ui = m_channels[i];
+        ui.channel->clearTarget();
+        ui.hasTarget = false;
+        ui.trackingActive = false;
+        ui.baselineSet = false;
+        ui.lastAnomaly = {};
+        ui.lastTargetCenter = QPointF();
+        ui.lastDeltaX = 0.0;
+        ui.lastDeltaY = 0.0;
+        ui.lastDisplacement = 0.0;
+        ui.lastSpeed = 0.0;
+        ui.lastScaleRatio = 1.0;
+    }
+    m_lastReportedSignature.clear();
+    appendLog(tr("已清除全部检测点的锁定目标与轨迹"));
+    statusBar()->showMessage(tr("已清除全部检测点目标，可在任意一路重新框选"), 3000);
+    updateFusionDecision();
+}
+
+void MainWindow::broadcastTargetSignature(int sourceIndex, const TargetSignature &sig)
+{
+    if (!sig.valid || !m_chkCrossViewSync || !m_chkCrossViewSync->isChecked()) return;
+    int synced = 0;
+    for (int i = 0; i < kChannelCount; ++i) {
+        if (i == sourceIndex) continue;
+        auto &ui = m_channels[i];
+        if (!ui.channel || !ui.channel->isOpen()) continue;
+        ui.baselineSet = false;
+        ui.hasTarget = false;
+        ui.trackingActive = true;
+        ui.lastAnomaly = {};
+        ui.lastDeltaX = 0.0;
+        ui.lastDeltaY = 0.0;
+        ui.lastDisplacement = 0.0;
+        ui.lastSpeed = 0.0;
+        ui.lastScaleRatio = 1.0;
+        ui.channel->syncTargetSignature(sig);
+        ++synced;
+    }
+    if (synced > 0) {
+        appendLog(tr("已联动同步检测点 %1 的目标特征至其余 %2 路，自动全图搜索并锁定中…")
+                      .arg(sourceIndex + 1).arg(synced));
+        statusBar()->showMessage(tr("已由检测点 %1 联动其余 %2 路自动搜寻同特征目标")
+                                    .arg(sourceIndex + 1).arg(synced), 4000);
         updateFusionDecision();
     }
 }
@@ -575,10 +708,11 @@ void MainWindow::applyDetectorMode(int modeIndex)
 {
     for (auto &c : m_channels) {
         c.channel->setDetectorMode(modeIndex);
-        c.channel->resetBaseline();
+        c.channel->clearTarget();
         c.baselineSet = false;
+        c.hasTarget = false;
+        c.trackingActive = false;
         c.lastAnomaly = {};
-        c.video->setMonitoringUnavailable(tr("检测模式已变化，请重新选目标并锁定基准"));
     }
     updateFusionDecision();
     appendLog(tr("切换检测模式为：%1").arg(m_comboMode->currentText()));
@@ -588,6 +722,7 @@ void MainWindow::updateFusionDecision()
 {
     const qint64 now = monitorNowMs();
     int unavailable = 0, uncalibrated = 0, pending = 0, lost = 0;
+    int trackingLive = 0, trackingSearching = 0;
     int tilted = 0, scaledLarger = 0, scaledSmaller = 0, displaced = 0, normalCount = 0;
     QList<int> lostChannels, changedChannels;
     QStringList alertDetails;
@@ -619,18 +754,37 @@ void MainWindow::updateFusionDecision()
         }
         if (!ui.baselineSet || ui.lastAnomaly.type == AnomalyType::Uncalibrated) {
             ++uncalibrated;
-            setCard(ui, ui.hasTarget ? tr("已选目标") : tr("未设基准"),
-                    ui.hasTarget ? QStringLiteral("#0288d1") : QStringLiteral("#757575"),
-                    ui.hasTarget ? tr("已框选目标，请点击【标定】或【一键锁定】")
-                                 : tr("请在左侧画面拖拽框选目标"));
+            if (ui.trackingActive && ui.hasTarget) {
+                ++trackingLive;
+                const QString dxStr = QStringLiteral("%1%2").arg(ui.lastDeltaX >= 0.0 ? QStringLiteral("+") : QString()).arg(ui.lastDeltaX, 0, 'f', 0);
+                const QString dyStr = QStringLiteral("%1%2").arg(ui.lastDeltaY >= 0.0 ? QStringLiteral("+") : QString()).arg(ui.lastDeltaY, 0, 'f', 0);
+                setCard(ui, tr("跟踪中"), QStringLiteral("#0288d1"),
+                        tr("(%1,%2) · Δ%3px (%4,%5) · %6px/s · %7%")
+                            .arg(int(std::lround(ui.lastTargetCenter.x())))
+                            .arg(int(std::lround(ui.lastTargetCenter.y())))
+                            .arg(ui.lastDisplacement, 0, 'f', 1)
+                            .arg(dxStr, dyStr)
+                            .arg(ui.lastSpeed, 0, 'f', 0)
+                            .arg(ui.lastScaleRatio * 100.0, 0, 'f', 0));
+            } else if (ui.trackingActive && !ui.hasTarget) {
+                ++trackingSearching;
+                setCard(ui, tr("搜索中"), QStringLiteral("#f57c00"),
+                        tr("目标暂离/遮挡，正在全图重找…（右键清除）"));
+            } else {
+                setCard(ui, tr("待选目标"), QStringLiteral("#757575"),
+                        tr("左键拖拽框选目标即开始实时跟踪（右键清除）"));
+            }
             continue;
         }
         const auto &a = ui.lastAnomaly;
+        const QString posTag = ui.hasTarget
+            ? tr("(%1,%2) ").arg(int(std::lround(ui.lastTargetCenter.x()))).arg(int(std::lround(ui.lastTargetCenter.y())))
+            : QString();
         switch (a.type) {
         case AnomalyType::Lost: {
             ++lost; lostChannels << (i + 1);
-            setCard(ui, tr("目标不可见"), QStringLiteral("#c62828"), tr("可能移走、遮挡或移出视野"));
-            alertDetails << tr("机位%1 不可见").arg(i + 1);
+            setCard(ui, tr("目标丢失"), QStringLiteral("#c62828"), tr("全图搜索中 · 可能移出视野或被遮挡"));
+            alertDetails << tr("检测点%1 丢失").arg(i + 1);
             break;
         }
         case AnomalyType::Pending: {
@@ -643,9 +797,9 @@ void MainWindow::updateFusionDecision()
             ++tilted; changedChannels << (i + 1);
             const QString b = tr("倾斜 %1°").arg(a.deltaAngle, 0, 'f', 1);
             setCard(ui, b, QStringLiteral("#e65100"),
-                    tr("姿态倾斜 %1° · 面积 %2% · 位移 %3px")
-                        .arg(a.deltaAngle, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
-            alertDetails << tr("机位%1 %2").arg(i + 1).arg(b);
+                    tr("%1倾斜 %2° · 面积 %3% · Δ%4px")
+                        .arg(posTag).arg(a.deltaAngle, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            alertDetails << tr("检测点%1 %2").arg(i + 1).arg(b);
             break;
         }
         case AnomalyType::ScaledLarger: {
@@ -653,9 +807,9 @@ void MainWindow::updateFusionDecision()
             const double pct = (a.scaleRatio - 1.0) * 100.0;
             const QString b = tr("变大 +%1%").arg(pct, 0, 'f', 0);
             setCard(ui, b, QStringLiteral("#d84315"),
-                    tr("目标变大 +%1%（面积比 %2%）· 位移 %3px")
-                        .arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
-            alertDetails << tr("机位%1 %2").arg(i + 1).arg(b);
+                    tr("%1变大 +%2%（%3%）· Δ%4px")
+                        .arg(posTag).arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            alertDetails << tr("检测点%1 %2").arg(i + 1).arg(b);
             break;
         }
         case AnomalyType::ScaledSmaller: {
@@ -663,9 +817,9 @@ void MainWindow::updateFusionDecision()
             const double pct = (1.0 - a.scaleRatio) * 100.0;
             const QString b = tr("变小 -%1%").arg(pct, 0, 'f', 0);
             setCard(ui, b, QStringLiteral("#d84315"),
-                    tr("目标变小 -%1%（面积比 %2%）· 位移 %3px")
-                        .arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
-            alertDetails << tr("机位%1 %2").arg(i + 1).arg(b);
+                    tr("%1变小 -%2%（%3%）· Δ%4px")
+                        .arg(posTag).arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            alertDetails << tr("检测点%1 %2").arg(i + 1).arg(b);
             break;
         }
         case AnomalyType::Displaced: {
@@ -676,20 +830,20 @@ void MainWindow::updateFusionDecision()
                 dirs << (a.deltaX > 0 ? tr("右%1").arg(a.deltaX, 0, 'f', 0) : tr("左%1").arg(-a.deltaX, 0, 'f', 0));
             if (std::abs(a.deltaY) >= 4.0)
                 dirs << (a.deltaY > 0 ? tr("下%1").arg(a.deltaY, 0, 'f', 0) : tr("上%1").arg(-a.deltaY, 0, 'f', 0));
-            const QString dirStr = dirs.isEmpty() ? QString() : tr("（%1px）").arg(dirs.join(QStringLiteral("、")));
+            const QString dirStr = dirs.isEmpty() ? QString() : tr("（%1）").arg(dirs.join(QStringLiteral("、")));
             setCard(ui, b, QStringLiteral("#8e24aa"),
-                    tr("位置移动 %1px%2 · 面积 %3%")
-                        .arg(a.displacement, 0, 'f', 1).arg(dirStr).arg(a.scaleRatio * 100.0, 0, 'f', 0));
-            alertDetails << tr("机位%1 移动%2px%3").arg(i + 1).arg(a.displacement, 0, 'f', 1).arg(dirStr);
+                    tr("%1Δ%2px%3 · %4px/s · %5%")
+                        .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(dirStr).arg(ui.lastSpeed, 0, 'f', 0).arg(a.scaleRatio * 100.0, 0, 'f', 0));
+            alertDetails << tr("检测点%1 移动%2px%3").arg(i + 1).arg(a.displacement, 0, 'f', 1).arg(dirStr);
             break;
         }
         case AnomalyType::Normal: {
             ++normalCount;
             const QString metric = a.angleReliable
-                ? tr("面积 %1% · 位移 %2px · 倾角 %3°")
-                      .arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1).arg(a.deltaAngle, 0, 'f', 1)
-                : tr("面积 %1% · 位移 %2px（主轴不可测）")
-                      .arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1);
+                ? tr("%1Δ%2px · 面积%3% · 倾角%4°")
+                      .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.deltaAngle, 0, 'f', 1)
+                : tr("%1Δ%2px · 面积%3% · %4px/s")
+                      .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(ui.lastSpeed, 0, 'f', 0);
             setCard(ui, tr("正常"), QStringLiteral("#2e7d32"), metric);
             break;
         }
@@ -705,12 +859,12 @@ void MainWindow::updateFusionDecision()
             severity = QStringLiteral("confirmed");
             color = QStringLiteral("#b71c1c");
             snapTag = QStringLiteral("multi-lost");
-            text = tr("🚨 多视角确认告警：藏品目标不可见（%1/3 机位丢失）").arg(lost);
+            text = tr("🚨 多视角确认告警：目标丢失（%1/3 检测点不可见）").arg(lost);
         } else {
             severity = QStringLiteral("single");
             color = QStringLiteral("#d84315");
             snapTag = QStringLiteral("single-lost");
-            text = tr("⚠️ 单视角预警：机位 %1 目标不可见（另 %2 路正常，疑似遮挡）")
+            text = tr("⚠️ 单视角预警：检测点 %1 目标不可见（另 %2 路正常，疑似遮挡）")
                        .arg(lostChannels.first()).arg(normalCount);
         }
     } else if (changedTotal > 0) {
@@ -742,28 +896,37 @@ void MainWindow::updateFusionDecision()
             severity = QStringLiteral("single");
             color = QStringLiteral("#ef6c00");
             snapTag = QStringLiteral("single-change");
-            text = tr("⚠️ 单视角变化提示：机位 %1（%2）").arg(changedChannels.first()).arg(summary);
+            text = tr("⚠️ 单视角变化提示：检测点 %1（%2）").arg(changedChannels.first()).arg(summary);
         }
     } else if (unavailable > 0) {
         state = QStringLiteral("unavailable");
         severity = QStringLiteral("incomplete");
         color = QStringLiteral("#6d4c41");
-        text = tr("监控不完整：%1 路 ESP32 无线视频未就绪").arg(unavailable);
+        text = tr("连接未就绪：%1 路 ESP32 无线画面离线").arg(unavailable);
     } else if (uncalibrated > 0) {
         state = QStringLiteral("uncalibrated");
         severity = QStringLiteral("incomplete");
-        color = QStringLiteral("#546e7a");
-        text = tr("待锁定基准：%1 路未标定（请在画面框选目标后点击锁定）").arg(uncalibrated);
+        if (trackingLive > 0 || trackingSearching > 0) {
+            color = QStringLiteral("#0277bd");
+            const QString searchHint = trackingSearching > 0
+                ? tr("，%1 路搜索中").arg(trackingSearching)
+                : QString();
+            text = tr("🔵 实时跟踪中（%1/3 路已锁定%2）· 点击【锁定基准】可启用异常告警")
+                       .arg(trackingLive).arg(searchHint);
+        } else {
+            color = QStringLiteral("#546e7a");
+            text = tr("待选目标：%1 路未锁定（左键拖拽框选目标即开始实时跟踪）").arg(uncalibrated);
+        }
     } else if (pending > 0) {
         state = QStringLiteral("pending");
         severity = QStringLiteral("pending");
         color = QStringLiteral("#806500");
-        text = tr("异动防抖确认中（%1 路）…").arg(pending);
+        text = tr("变化防抖确认中（%1 路）…").arg(pending);
     } else {
         state = QStringLiteral("normal");
         severity = QStringLiteral("normal");
         color = QStringLiteral("#2e7d32");
-        text = tr("✅ 藏品状态正常：三视角均在基准阈值内");
+        text = tr("✅ 多检测点跟踪稳定：三视角均在基准阈值内");
     }
 
     if (unavailable > 0 && (lost > 0 || changedTotal > 0))
@@ -773,41 +936,17 @@ void MainWindow::updateFusionDecision()
     m_lblFusionStatus->setProperty("monitorSeverity", severity);
     if (m_lblFusionStatus->text() != text) m_lblFusionStatus->setText(text);
     const QString style = QStringLiteral(
-        "background-color: %1; color: white; font-weight: bold; font-size: 10.5pt; padding: 4px 8px; border-radius: 5px;").arg(color);
+        "background-color: %1; color: white; font-weight: bold; font-size: 10pt; padding: 4px 8px; border-radius: 5px;").arg(color);
     if (m_lblFusionStatus->styleSheet() != style) m_lblFusionStatus->setStyleSheet(style);
     m_lblFusionDetail->setText(alertDetails.join(QStringLiteral(" | ")));
 
-    const QString signature = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8")
+    const QString signature = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9")
         .arg(state, severity).arg(lost).arg(tilted).arg(scaledLarger).arg(scaledSmaller)
-        .arg(displaced).arg(unavailable);
+        .arg(displaced).arg(unavailable).arg(trackingLive);
     if (signature != m_lastReportedSignature) {
         const QString logEntry = alertDetails.isEmpty() ? text : QStringLiteral("%1 [%2]").arg(text, alertDetails.join(QStringLiteral(", ")));
         appendLog(logEntry);
         m_lastReportedSignature = signature;
-
-        if ((severity == QStringLiteral("single") || severity == QStringLiteral("confirmed")) && isVisible()) {
-            if (m_chkBeep && m_chkBeep->isChecked() && now - m_lastBeepMs >= 3000) {
-                QApplication::beep();
-                m_lastBeepMs = now;
-            }
-            if (severity == QStringLiteral("confirmed") && m_chkAutoSnap && m_chkAutoSnap->isChecked()
-                && now - m_lastSnapshotMs >= 5000) {
-                saveAlertSnapshot(snapTag);
-                m_lastSnapshotMs = now;
-            }
-        }
-    }
-}
-
-void MainWindow::saveAlertSnapshot(const QString &tag)
-{
-    const QDir alertDir(QFileInfo(m_settingsPath).dir().filePath(QStringLiteral("alerts")));
-    if (!alertDir.mkpath(QStringLiteral("."))) return;
-    const QString fileName = QStringLiteral("alert-%1-%2.png")
-        .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")), tag);
-    const QString fullPath = alertDir.filePath(fileName);
-    if (grab().save(fullPath)) {
-        appendLog(tr("已自动保存告警现场截图：%1").arg(fullPath));
     }
 }
 
@@ -845,7 +984,8 @@ void MainWindow::toggleChannel(int index)
         ui.video->setStatus(tr("未连接"));
         ui.baselineSet = false;
         ui.hasTarget = false;
-        if (ui.panelBox) ui.panelBox->setTitle(tr("监测机位 %1（ESP32 无线）").arg(index + 1));
+        ui.trackingActive = false;
+        if (ui.panelBox) ui.panelBox->setTitle(tr("检测点 %1（ESP32 无线）").arg(index + 1));
         updateFusionDecision();
         return;
     }
@@ -858,7 +998,7 @@ void MainWindow::toggleChannel(int index)
         m_discoveryButton->setText(tr("停止查找"));
         m_discoveryStatus->setText(tr("正在查找设备…"));
     }
-    statusBar()->showMessage(tr("正在按固定编号查找机位 #%1（无需关心 COM 口）…").arg(index + 1), 4000);
+    statusBar()->showMessage(tr("正在按固定编号查找检测点 #%1（无需关心 COM 口）…").arg(index + 1), 4000);
 }
 
 void MainWindow::openChannel(int index, const QUrl &url)
@@ -871,8 +1011,17 @@ void MainWindow::openChannel(int index, const QUrl &url)
     ui.streamAvailable = false;
     ui.observedAtMs = -1;
     ui.baselineSet = false;
+    ui.hasTarget = false;
+    ui.trackingActive = false;
     ui.lastAnomaly = {};
+    ui.lastTargetCenter = QPointF();
+    ui.lastDeltaX = 0.0;
+    ui.lastDeltaY = 0.0;
+    ui.lastDisplacement = 0.0;
+    ui.lastSpeed = 0.0;
+    ui.lastScaleRatio = 1.0;
     ui.video->clear();
+    ui.video->setShowTrajectory(m_chkShowTrajectory ? m_chkShowTrajectory->isChecked() : true);
     ui.automaticConnectionAllowed = true;
     ui.unavailableReason.clear();
     ui.connectButton->setText(tr("断开"));
@@ -900,6 +1049,8 @@ void MainWindow::setChannelUnavailable(int index, const QString &reason)
     ui.connectButton->setText(tr("重连"));
     ui.deviceAddress.clear();
     ui.baselineSet = false;
+    ui.hasTarget = false;
+    ui.trackingActive = false;
     updateDiscoveryStatus();
     updateFusionDecision();
 }
@@ -979,7 +1130,7 @@ void MainWindow::onStateChanged(int index, MjpegStream::State state, const QStri
         m_channels[index].observedAtMs = -1;
         m_channels[index].hasTarget = false;
         if (m_channels[index].panelBox)
-            m_channels[index].panelBox->setTitle(tr("监测机位 %1（ESP32 无线）").arg(index + 1));
+            m_channels[index].panelBox->setTitle(tr("检测点 %1（ESP32 无线）").arg(index + 1));
     }
     QString text;
     switch (state) {

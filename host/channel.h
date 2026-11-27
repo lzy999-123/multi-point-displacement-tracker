@@ -2,8 +2,11 @@
 
 #include <QImage>
 #include <QObject>
+#include <QPair>
+#include <QPointF>
 #include <QThread>
 #include <QUrl>
+#include <QVector>
 
 #include <atomic>
 #include <memory>
@@ -20,7 +23,14 @@ struct ChannelResult {
     QImage mask;                // 检测掩膜（仅开启显示掩膜时有效，Grayscale8）
     QList<Detection> detections;
     bool hasTarget = false;
-    int offsetX = 0, offsetY = 0;  // 目标中心减画面中心，右、下为正
+    bool trackingActive = false;       // 是否已人工选定目标（含丢失搜索期）
+    int offsetX = 0, offsetY = 0;      // 目标中心减画面中心，右、下为正
+    QPointF targetCenter;              // 目标当前图像像素坐标
+    double deltaX = 0.0, deltaY = 0.0; // 相对跟踪起点的位移 (px)
+    double displacement = 0.0;         // 相对跟踪起点的欧氏位移 (px)
+    double speedPxPerSec = 0.0;        // 瞬时移动速度 (px/s)
+    double scaleRatio = 1.0;           // 相对初始目标面积的尺度比
+    QVector<QPointF> trajectory;       // 最近运动轨迹点（图像坐标）
     quint64 seq = 0;
     quint64 revision = 0;       // 重连/重选/重标定前的排队结果不能复活旧状态
     qint64 observedAtMs = -1;   // 全局单调时钟，采样进入检测的时刻
@@ -61,6 +71,9 @@ public slots:
     void setImageEnhance(bool enable);
     void pickTarget(int x, int y);
     void selectTargetRoi(const QRect &roi);
+    void syncTargetSignature(const TargetSignature &sig);
+    void clearTarget();
+    void resetTrajectoryOrigin();
     void pickColor(int x, int y);
 
 signals:
@@ -70,6 +83,7 @@ signals:
     void activeStreamChanged(const QUrl &url);
     void videoProfileApplied(int profile);
     void calibrationFinished(quint64 revision, bool success, const QString &reason);
+    void targetSignatureExtracted(quint64 revision, const TargetSignature &sig);
 
 private:
     void onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs);
@@ -91,6 +105,17 @@ private:
     Detection m_lastDetection;
     bool m_showMask = false;
     bool m_imageEnhance = false;
+    bool m_pendingSignatureBroadcast = false;
+    bool m_hasTrackOrigin = false;
+    QPointF m_trackOrigin;
+    double m_trackOriginArea = 0.0;
+    bool m_hasPrevTrack = false;
+    QPointF m_prevTrackCenter;
+    qint64 m_prevTrackMs = -1;
+    double m_smoothSpeed = 0.0;
+    QVector<QPair<QPointF, qint64>> m_timedTrajectory;
+    bool m_hasStillAnchor = false;
+    QPointF m_stillAnchor;
     qint64 m_fpsWindowStart = -1;
     int m_fpsFrames = 0;
     double m_fps = 0.0;
@@ -121,6 +146,9 @@ public:
     void setImageEnhance(bool enable);
     void pickTarget(int x, int y);
     void selectTargetRoi(const QRect &roi);
+    void syncTargetSignature(const TargetSignature &sig);
+    void clearTarget();
+    void resetTrajectoryOrigin();
     void pickColor(int x, int y);  // 图像坐标
 
     // 界面处理完一个结果后调用，允许工作线程发送下一个（防止界面卡顿时结果堆积）
@@ -133,6 +161,7 @@ signals:
     void activeStreamChanged(const QUrl &url);
     void videoProfileApplied(int profile);
     void calibrationFinished(quint64 revision, bool success, const QString &reason);
+    void targetSignatureExtracted(quint64 revision, const TargetSignature &sig);
 
 private:
     void invalidateResults();

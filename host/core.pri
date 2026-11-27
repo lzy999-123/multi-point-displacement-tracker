@@ -1,6 +1,7 @@
 # 与界面无关的核心模块，主程序和测试共用。
 QT += concurrent
 INCLUDEPATH += $$PWD
+LIBS += -lopencv_tracking$${OPENCV_VER}$${OPENCV_SUFFIX} -lopencv_video$${OPENCV_VER}$${OPENCV_SUFFIX}
 
 SOURCES += \
     $$PWD/mjpegparser.cpp \

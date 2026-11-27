@@ -9,6 +9,9 @@
 namespace {
 // 界面最多积压 2 个未处理结果，超过就跳过显示（检测照常进行）
 constexpr int kMaxPendingResults = 2;
+// 运动轨迹尾迹保留时长与最大点数（静止后自动淡出消失，保持画面清爽）
+constexpr qint64 kTrajectoryTtlMs = 850;
+constexpr int kTrajectoryMaxPoints = 16;
 
 QImage toQImage(const cv::Mat &bgr)
 {
@@ -90,6 +93,14 @@ void ChannelWorker::close()
     m_baseline.reset();
     m_debouncer.reset();
     m_autoDetector.resetTracking();
+    m_pendingSignatureBroadcast = false;
+    m_hasTrackOrigin = false;
+    m_trackOriginArea = 0.0;
+    m_hasPrevTrack = false;
+    m_prevTrackMs = -1;
+    m_smoothSpeed = 0.0;
+    m_timedTrajectory.clear();
+    m_hasStillAnchor = false;
 }
 
 void ChannelWorker::setParams(const ColorParams &params)
@@ -123,7 +134,13 @@ void ChannelWorker::calibrateBaseline()
     }
     m_baseline.calibrate(m_lastDetection, m_lastFrame);
     m_debouncer.reset();
-    emit calibrationFinished(m_revision, true, QStringLiteral("已锁定当前选定目标的图像基准"));
+    m_hasTrackOrigin = true;
+    m_trackOrigin = QPointF(m_lastDetection.center.x, m_lastDetection.center.y);
+    m_trackOriginArea = std::max(1.0, m_lastDetection.area);
+    m_timedTrajectory.clear();
+    m_hasStillAnchor = true;
+    m_stillAnchor = m_trackOrigin;
+    emit calibrationFinished(m_revision, true, QStringLiteral("已锁定当前选定目标的基准并重置位移起点"));
 }
 
 void ChannelWorker::resetBaseline()
@@ -152,9 +169,16 @@ void ChannelWorker::pickTarget(int x, int y)
 {
     resetBaseline();
     m_lastDetection = Detection();
+    m_hasTrackOrigin = false;
+    m_hasPrevTrack = false;
+    m_smoothSpeed = 0.0;
+    m_timedTrajectory.clear();
+    m_hasStillAnchor = false;
     if (m_mode == AutoContour) {
+        m_pendingSignatureBroadcast = true;
         m_autoDetector.pickTarget(x, y);
     } else {
+        m_pendingSignatureBroadcast = false;
         pickColor(x, y);
     }
 }
@@ -163,10 +187,62 @@ void ChannelWorker::selectTargetRoi(const QRect &roi)
 {
     resetBaseline();
     m_lastDetection = Detection();
+    m_hasTrackOrigin = false;
+    m_hasPrevTrack = false;
+    m_smoothSpeed = 0.0;
+    m_timedTrajectory.clear();
+    m_hasStillAnchor = false;
     if (m_mode == AutoContour) {
+        m_pendingSignatureBroadcast = true;
         m_autoDetector.selectRoi(cv::Rect(roi.x(), roi.y(), roi.width(), roi.height()));
     } else {
+        m_pendingSignatureBroadcast = false;
         pickColor(roi.center().x(), roi.center().y());
+    }
+}
+
+void ChannelWorker::syncTargetSignature(const TargetSignature &sig)
+{
+    resetBaseline();
+    m_lastDetection = Detection();
+    m_hasTrackOrigin = false;
+    m_hasPrevTrack = false;
+    m_smoothSpeed = 0.0;
+    m_timedTrajectory.clear();
+    m_hasStillAnchor = false;
+    m_pendingSignatureBroadcast = false;
+    if (m_mode == AutoContour) {
+        m_autoDetector.adoptSignature(sig);
+    }
+}
+
+void ChannelWorker::clearTarget()
+{
+    resetBaseline();
+    m_autoDetector.resetTracking();
+    m_pendingSignatureBroadcast = false;
+    m_lastDetection = Detection();
+    m_hasTrackOrigin = false;
+    m_hasPrevTrack = false;
+    m_smoothSpeed = 0.0;
+    m_timedTrajectory.clear();
+    m_hasStillAnchor = false;
+}
+
+void ChannelWorker::resetTrajectoryOrigin()
+{
+    m_timedTrajectory.clear();
+    m_smoothSpeed = 0.0;
+    m_hasPrevTrack = false;
+    if (m_lastDetection.valid && m_lastDetection.area > 0) {
+        m_hasTrackOrigin = true;
+        m_trackOrigin = QPointF(m_lastDetection.center.x, m_lastDetection.center.y);
+        m_trackOriginArea = std::max(1.0, m_lastDetection.area);
+        m_hasStillAnchor = true;
+        m_stillAnchor = m_trackOrigin;
+    } else {
+        m_hasTrackOrigin = false;
+        m_hasStillAnchor = false;
     }
 }
 
@@ -205,6 +281,13 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
 
     if (m_mode == AutoContour) {
         result.detections = m_autoDetector.detect(bgr);
+        if (m_pendingSignatureBroadcast) {
+            m_pendingSignatureBroadcast = false;
+            if (!result.detections.isEmpty()) {
+                const TargetSignature sig = m_autoDetector.exportSignature(bgr);
+                if (sig.valid) emit targetSignatureExtracted(m_revision, sig);
+            }
+        }
     } else {
         result.detections = m_blobDetector.detect(bgr);
     }
@@ -215,17 +298,76 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
     result.observedAtMs = observedAt;
     result.fps = m_fps;
 
+    result.trackingActive = (m_mode == AutoContour) ? m_autoDetector.hasActiveSelection() : !result.detections.isEmpty();
+
+    // 清理超时轨迹点：目标静止后约 0.85 秒内尾迹自然收缩并完全消失
+    while (!m_timedTrajectory.isEmpty()
+           && (observedAt < m_timedTrajectory.first().second
+               || observedAt - m_timedTrajectory.first().second > kTrajectoryTtlMs)) {
+        m_timedTrajectory.removeFirst();
+    }
+
     if (!result.detections.isEmpty()) {
         m_lastDetection = result.detections.first();
         const cv::Point2d c = m_lastDetection.center;
+        const QPointF pt(c.x, c.y);
         result.hasTarget = true;
+        result.targetCenter = pt;
         result.offsetX = int(std::lround(c.x - bgr.cols / 2.0));
         result.offsetY = int(std::lround(c.y - bgr.rows / 2.0));
+
+        if (!m_hasTrackOrigin) {
+            m_hasTrackOrigin = true;
+            m_trackOrigin = pt;
+            m_trackOriginArea = std::max(1.0, m_lastDetection.area);
+            m_timedTrajectory.clear();
+            m_hasStillAnchor = true;
+            m_stillAnchor = pt;
+        } else {
+            const QPointF refPt = m_timedTrajectory.isEmpty()
+                ? (m_hasStillAnchor ? m_stillAnchor : pt)
+                : m_timedTrajectory.last().first;
+            if (std::hypot(pt.x() - refPt.x(), pt.y() - refPt.y()) >= 3.0) {
+                if (m_timedTrajectory.isEmpty() && m_hasStillAnchor) {
+                    m_timedTrajectory.append({m_stillAnchor, observedAt - 40});
+                }
+                m_timedTrajectory.append({pt, observedAt});
+                while (m_timedTrajectory.size() > kTrajectoryMaxPoints)
+                    m_timedTrajectory.removeFirst();
+            }
+            m_hasStillAnchor = true;
+            m_stillAnchor = pt;
+        }
+        result.deltaX = pt.x() - m_trackOrigin.x();
+        result.deltaY = pt.y() - m_trackOrigin.y();
+        result.displacement = std::hypot(result.deltaX, result.deltaY);
+        result.scaleRatio = m_lastDetection.area / std::max(1.0, m_trackOriginArea);
+
+        if (m_hasPrevTrack && observedAt > m_prevTrackMs && observedAt - m_prevTrackMs <= 1000) {
+            const double dt = double(observedAt - m_prevTrackMs) / 1000.0;
+            const double instSpeed = std::hypot(pt.x() - m_prevTrackCenter.x(),
+                                                pt.y() - m_prevTrackCenter.y()) / dt;
+            m_smoothSpeed = 0.65 * m_smoothSpeed + 0.35 * instSpeed;
+        } else {
+            m_smoothSpeed = 0.0;
+        }
+        m_hasPrevTrack = true;
+        m_prevTrackCenter = pt;
+        m_prevTrackMs = observedAt;
+        result.speedPxPerSec = m_smoothSpeed;
     } else {
         m_lastDetection = Detection();
         result.hasTarget = false;
         result.offsetX = 0;
         result.offsetY = 0;
+        m_hasPrevTrack = false;
+        m_hasStillAnchor = false;
+        m_smoothSpeed = 0.0;
+    }
+    if (m_timedTrajectory.size() >= 2) {
+        result.trajectory.reserve(m_timedTrajectory.size());
+        for (const auto &entry : m_timedTrajectory)
+            result.trajectory.append(entry.first);
     }
 
     // 藏品监测：比对基准计算偏差
@@ -255,6 +397,7 @@ Channel::Channel(int id, QObject *parent)
     qRegisterMetaType<ChannelResult>();
     qRegisterMetaType<ColorParams>();
     qRegisterMetaType<AutoContourParams>();
+    qRegisterMetaType<TargetSignature>();
     qRegisterMetaType<MonitorThresholds>();
     qRegisterMetaType<AnomalyMetrics>();
     qRegisterMetaType<MjpegStream::State>();
@@ -268,6 +411,7 @@ Channel::Channel(int id, QObject *parent)
     connect(m_worker, &ChannelWorker::activeStreamChanged, this, &Channel::activeStreamChanged);
     connect(m_worker, &ChannelWorker::videoProfileApplied, this, &Channel::videoProfileApplied);
     connect(m_worker, &ChannelWorker::calibrationFinished, this, &Channel::calibrationFinished);
+    connect(m_worker, &ChannelWorker::targetSignatureExtracted, this, &Channel::targetSignatureExtracted);
     m_thread.setObjectName(QStringLiteral("channel-%1").arg(id));
     m_thread.start();
     QMetaObject::invokeMethod(m_worker, &ChannelWorker::init, Qt::QueuedConnection);
@@ -360,6 +504,24 @@ void Channel::selectTargetRoi(const QRect &roi)
     invalidateResults();
     QMetaObject::invokeMethod(m_worker, [w = m_worker, roi] { w->selectTargetRoi(roi); },
                               Qt::QueuedConnection);
+}
+
+void Channel::syncTargetSignature(const TargetSignature &sig)
+{
+    invalidateResults();
+    QMetaObject::invokeMethod(m_worker, [w = m_worker, sig] { w->syncTargetSignature(sig); },
+                              Qt::QueuedConnection);
+}
+
+void Channel::clearTarget()
+{
+    invalidateResults();
+    QMetaObject::invokeMethod(m_worker, &ChannelWorker::clearTarget, Qt::QueuedConnection);
+}
+
+void Channel::resetTrajectoryOrigin()
+{
+    QMetaObject::invokeMethod(m_worker, &ChannelWorker::resetTrajectoryOrigin, Qt::QueuedConnection);
 }
 
 void Channel::pickColor(int x, int y)

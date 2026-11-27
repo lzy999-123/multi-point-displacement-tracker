@@ -26,7 +26,7 @@ if ($Executables -contains 'DisplacementTracker') {
 }
 $runtimeDirectories = @($targets | ForEach-Object { Split-Path -Parent $_ } | Select-Object -Unique)
 foreach ($runtimeDirectory in $runtimeDirectories) {
-foreach ($module in @('core', 'imgproc', 'imgcodecs')) {
+foreach ($module in @('core', 'imgproc', 'imgcodecs', 'flann', 'features2d', 'calib3d', 'dnn', 'video', 'tracking')) {
     Copy-Item -LiteralPath (Join-Path $OpenCvRoot "x64\vc17\bin\opencv_${module}4120.dll") -Destination $runtimeDirectory -Force
 }
 if (Test-Path -LiteralPath "$PSScriptRoot\camera-runtime.ini") {

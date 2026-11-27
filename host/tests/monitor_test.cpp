@@ -440,6 +440,151 @@ private slots:
         QCOMPARE(restored.size(), 1);
         QCOMPARE(baseline.evaluate(restored.first(), {}).type, AnomalyType::Normal);
     }
+    void yellowBottleDoesNotJumpToOtherColoredBottlesAndRedetects() {
+        auto drawBottle = [](cv::Mat &img, int cx, int cy, const cv::Scalar &body, const cv::Scalar &cap) {
+            cv::rectangle(img, cv::Rect(cx - 24, cy - 42, 48, 96), body, -1);
+            cv::rectangle(img, cv::Rect(cx - 12, cy - 62, 24, 22), body, -1);
+            cv::rectangle(img, cv::Rect(cx - 14, cy - 72, 28, 12), cap, -1);
+            // 所有瓶子贴同样白色标签条，专门考验颜色身份门控与抗同形干扰能力
+            cv::rectangle(img, cv::Rect(cx - 22, cy - 6, 44, 22), cv::Scalar(235, 240, 242), -1);
+            cv::line(img, cv::Point(cx - 14, cy + 4), cv::Point(cx + 14, cy + 4), cv::Scalar(90, 90, 90), 2);
+        };
+        auto makeBottleScene = [&](bool hasYellow, int yx, int yy) {
+            cv::Mat img(480, 640, CV_8UC3, cv::Scalar(120, 122, 125));
+            // 蓝瓶和绿瓶固定在桌面，与黄瓶外形完全一致
+            drawBottle(img, 320, 250, cv::Scalar(210, 115, 30), cv::Scalar(195, 95, 20));
+            drawBottle(img, 500, 250, cv::Scalar(50, 180, 55), cv::Scalar(35, 160, 45));
+            if (hasYellow)
+                drawBottle(img, yx, yy, cv::Scalar(25, 205, 235), cv::Scalar(20, 185, 220));
+            return img;
+        };
+
+        AutoContourDetector detector;
+        const cv::Mat frame0 = makeBottleScene(true, 140, 250);
+        detector.selectRoi(cv::Rect(108, 174, 64, 152));
+        const auto init = detector.detect(frame0);
+        QCOMPARE(init.size(), 1);
+        QVERIFY(detector.hasActiveSelection());
+        QVERIFY(std::abs(init.first().center.x - 140.0) < 10.0);
+
+        // 1. 黄瓶向右移动靠近蓝瓶，应紧跟完整黄瓶（含中间白色标签），不偏到上半截也不跳到蓝瓶
+        for (int cx : {165, 195, 225, 255}) {
+            const auto tracked = detector.detect(makeBottleScene(true, cx, 250));
+            QCOMPARE(tracked.size(), 1);
+            QVERIFY2(std::abs(tracked.first().center.x - cx) < 16.0
+                         && std::abs(tracked.first().center.y - 250.0) < 16.0,
+                     qPrintable(QString("expected (%1,250) got (%2,%3)")
+                                    .arg(cx).arg(tracked.first().center.x).arg(tracked.first().center.y)));
+        }
+
+        // 2. 黄瓶跨过蓝瓶出现在蓝绿瓶之间，应迅速跟到新位置
+        const auto crossed = detector.detect(makeBottleScene(true, 410, 250));
+        QCOMPARE(crossed.size(), 1);
+        QVERIFY2(std::abs(crossed.first().center.x - 410.0) < 16.0
+                     && std::abs(crossed.first().center.y - 250.0) < 16.0,
+                 qPrintable(QString("expected (410,250) got (%1,%2)")
+                                .arg(crossed.first().center.x).arg(crossed.first().center.y)));
+
+        // 3. 黄瓶移出视野，桌面只剩外形完全相同的蓝瓶和绿瓶：必须报丢，绝不能串锁蓝/绿瓶
+        for (int i = 0; i < 5; ++i) {
+            const auto absent = detector.detect(makeBottleScene(false, 0, 0));
+            QVERIFY2(absent.isEmpty(),
+                     absent.isEmpty() ? "" : qPrintable(QString("falsely locked at x=%1").arg(absent.first().center.x)));
+        }
+
+        // 4. 黄瓶在全新远端位置 (570, 210) 重新出现：应全图自动重找锁定
+        const auto recovered = detector.detect(makeBottleScene(true, 570, 210));
+        QCOMPARE(recovered.size(), 1);
+        QVERIFY2(std::abs(recovered.first().center.x - 570.0) < 16.0
+                     && std::abs(recovered.first().center.y - 210.0) < 16.0,
+                 qPrintable(QString("expected (570,210) got (%1,%2)")
+                                .arg(recovered.first().center.x).arg(recovered.first().center.y)));
+
+        // 5. 清除目标后停止跟踪
+        detector.resetTracking();
+        QVERIFY(!detector.hasActiveSelection());
+        QVERIFY(detector.detect(frame0).isEmpty());
+    }
+    void crossCameraSignatureSyncLocksDifferentAngleLightingAndRejectsOtherColors() {
+        auto drawScaledBottle = [](cv::Mat &img, int cx, int cy, double scale,
+                                   const cv::Scalar &body, const cv::Scalar &cap) {
+            const int bw = int(std::lround(48 * scale));
+            const int bh = int(std::lround(96 * scale));
+            const int nw = int(std::lround(24 * scale));
+            const int nh = int(std::lround(22 * scale));
+            const int cw = int(std::lround(28 * scale));
+            const int ch = int(std::lround(12 * scale));
+            cv::rectangle(img, cv::Rect(cx - bw / 2, cy - int(std::lround(42 * scale)), bw, bh), body, -1);
+            cv::rectangle(img, cv::Rect(cx - nw / 2, cy - int(std::lround(62 * scale)), nw, nh), body, -1);
+            cv::rectangle(img, cv::Rect(cx - cw / 2, cy - int(std::lround(72 * scale)), cw, ch), cap, -1);
+            cv::rectangle(img, cv::Rect(cx - int(std::lround(22 * scale)), cy - int(std::lround(6 * scale)),
+                                        int(std::lround(44 * scale)), int(std::lround(22 * scale))),
+                          cv::Scalar(232, 236, 240), -1);
+        };
+
+        // 机位 1：正面视角，框选黄色瓶子
+        cv::Mat cam1(480, 640, CV_8UC3, cv::Scalar(120, 122, 125));
+        drawScaledBottle(cam1, 150, 260, 1.0, cv::Scalar(25, 205, 235), cv::Scalar(20, 185, 220));
+        drawScaledBottle(cam1, 340, 260, 1.0, cv::Scalar(210, 115, 30), cv::Scalar(195, 95, 20));
+        drawScaledBottle(cam1, 510, 260, 1.0, cv::Scalar(50, 180, 55), cv::Scalar(35, 160, 45));
+
+        AutoContourDetector det1, det2, det3;
+        det1.selectRoi(cv::Rect(118, 182, 64, 154));
+        const auto d1 = det1.detect(cam1);
+        QCOMPARE(d1.size(), 1);
+        const TargetSignature sig = det1.exportSignature(cam1);
+        QVERIFY(sig.valid);
+        QVERIFY(sig.isChromatic);
+
+        // 广播签名给机位 2 和机位 3
+        det2.adoptSignature(sig);
+        det3.adoptSignature(sig);
+        QVERIFY(det2.hasActiveSelection());
+        QVERIFY(det3.hasActiveSelection());
+
+        // 机位 2：近景侧视角（1.25x 放大 + 偏暗白平衡色偏 + 完全不同的位置，且有蓝/绿瓶干扰）
+        auto makeCam2 = [&](int yx, int yy) {
+            cv::Mat img(480, 640, CV_8UC3, cv::Scalar(105, 108, 112));
+            drawScaledBottle(img, 140, 250, 1.25, cv::Scalar(195, 100, 28), cv::Scalar(180, 85, 20));
+            drawScaledBottle(img, 300, 260, 1.25, cv::Scalar(42, 162, 48), cv::Scalar(32, 145, 38));
+            drawScaledBottle(img, yx, yy, 1.25, cv::Scalar(18, 175, 205), cv::Scalar(15, 158, 190));
+            return img;
+        };
+        const auto d2Init = det2.detect(makeCam2(470, 220));
+        QCOMPARE(d2Init.size(), 1);
+        QVERIFY2(std::abs(d2Init.first().center.x - 470.0) < 16.0
+                     && std::abs(d2Init.first().center.y - 220.0) < 16.0,
+                 qPrintable(QString("cam2 expected (470,220) got (%1,%2)")
+                                .arg(d2Init.first().center.x).arg(d2Init.first().center.y)));
+
+        // 机位 2 锁定后切入本地 CSRT，目标移动应顺滑跟住
+        const auto d2Move = det2.detect(makeCam2(420, 230));
+        QCOMPARE(d2Move.size(), 1);
+        QVERIFY2(std::abs(d2Move.first().center.x - 420.0) < 16.0
+                     && std::abs(d2Move.first().center.y - 230.0) < 16.0,
+                 qPrintable(QString("cam2 move expected (420,230) got (%1,%2)")
+                                .arg(d2Move.first().center.x).arg(d2Move.first().center.y)));
+
+        // 机位 3：远景视角（0.72x 缩小），起初画面里只有蓝/绿瓶，必须保持搜索不误锁
+        auto makeCam3 = [&](bool hasYellow, int yx, int yy) {
+            cv::Mat img(480, 640, CV_8UC3, cv::Scalar(130, 128, 126));
+            drawScaledBottle(img, 360, 230, 0.72, cv::Scalar(215, 120, 35), cv::Scalar(200, 100, 25));
+            drawScaledBottle(img, 490, 240, 0.72, cv::Scalar(55, 185, 60), cv::Scalar(40, 165, 48));
+            if (hasYellow)
+                drawScaledBottle(img, yx, yy, 0.72, cv::Scalar(30, 210, 240), cv::Scalar(25, 190, 220));
+            return img;
+        };
+        for (int i = 0; i < 3; ++i) {
+            QVERIFY(det3.detect(makeCam3(false, 0, 0)).isEmpty());
+        }
+        // 黄瓶进入机位 3 画面后，自动捕捉并锁定
+        const auto d3Found = det3.detect(makeCam3(true, 210, 190));
+        QCOMPARE(d3Found.size(), 1);
+        QVERIFY2(std::abs(d3Found.first().center.x - 210.0) < 16.0
+                     && std::abs(d3Found.first().center.y - 190.0) < 16.0,
+                 qPrintable(QString("cam3 expected (210,190) got (%1,%2)")
+                                .arg(d3Found.first().center.x).arg(d3Found.first().center.y)));
+    }
     void multiViewFusionDistinguishesSingleWarningFromMultiConfirmed() {
         QTemporaryDir directory;
         MainWindow window(nullptr, directory.filePath("camera.ini"));

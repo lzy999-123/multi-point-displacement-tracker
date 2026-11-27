@@ -78,118 +78,152 @@ void VideoWidget::paintEvent(QPaintEvent *)
         const double sy = target.height() / m_result.image.height();
         auto map = [&](double x, double y) { return QPointF(target.left() + x * sx, target.top() + y * sy); };
 
-        // 画面十字参考线
+        // 画面中心微小十字准星
         const QPointF center = target.center();
-        p.setPen(QPen(QColor(255, 255, 255, 120), 1, Qt::DashLine));
-        p.drawLine(QPointF(center.x() - 15, center.y()), QPointF(center.x() + 15, center.y()));
-        p.drawLine(QPointF(center.x(), center.y() - 15), QPointF(center.x(), center.y() + 15));
+        p.setPen(QPen(QColor(255, 255, 255, 95), 1, Qt::DashLine));
+        p.drawLine(QPointF(center.x() - 10, center.y()), QPointF(center.x() + 10, center.y()));
+        p.drawLine(QPointF(center.x(), center.y() - 10), QPointF(center.x(), center.y() + 10));
 
-        // 1. 若已设定基准，绘制基准参考轮廓（青色虚线框 + 基准主轴）
-        if (m_monitoringAvailable && m_result.baselineCalibrated && m_result.baselineDetection.valid) {
-            const Detection &b = m_result.baselineDetection;
-            const QRectF baseRect(map(b.box.x, b.box.y),
-                                  map(b.box.x + b.box.width, b.box.y + b.box.height));
-            p.setPen(QPen(QColor(0, 220, 255, 180), 2, Qt::DashLine));
-            p.setBrush(Qt::NoBrush);
-            p.drawRect(baseRect);
-
-            // 基准质心与方向射线
-            const QPointF baseCenter = map(b.center.x, b.center.y);
-            p.setPen(QPen(QColor(0, 220, 255, 220), 1, Qt::DotLine));
-            p.drawEllipse(baseCenter, 4, 4);
-
-            const double bRad = b.angle * kPi / 180.0;
-            const double bRayLen = std::max(20.0, b.box.height * 0.45 * sy);
-            const QPointF bTip(baseCenter.x() + bRayLen * std::cos(bRad),
-                               baseCenter.y() + bRayLen * std::sin(bRad));
-            if (b.angleReliable) p.drawLine(baseCenter, bTip);
-
-            // 标注“基准”文字
-            p.setPen(QColor(0, 220, 255, 220));
-            QFont bFont = p.font();
-            bFont.setPointSize(8);
-            p.setFont(bFont);
-            p.drawText(baseRect.left() + 2, baseRect.top() - 4, QStringLiteral("[基准参考]"));
+        // 1. 短时渐隐运动轨迹尾迹（仅在目标移动时浮现，静止后自动消失）
+        if (m_monitoringAvailable && m_showTrajectory && m_result.trajectory.size() >= 2) {
+            const int n = m_result.trajectory.size();
+            for (int i = 1; i < n; ++i) {
+                const double ratio = double(i) / double(n - 1);
+                const int alpha = int(30 + 185 * ratio * ratio);
+                const double penW = 1.2 + 1.4 * ratio;
+                p.setPen(QPen(QColor(0, 230, 255, alpha), penW, Qt::SolidLine, Qt::RoundCap));
+                const QPointF a = map(m_result.trajectory[i - 1].x(), m_result.trajectory[i - 1].y());
+                const QPointF b = map(m_result.trajectory[i].x(), m_result.trajectory[i].y());
+                p.drawLine(a, b);
+            }
         }
 
-        // 2. 绘制当前目标与异常形态
+        // 2. 绘制紧随目标移动的动态跟踪框（无任何固定在原地的参考框）
+        QString liveTagText;
+        QPointF liveTagAnchor;
+        QColor liveTagColor(0, 230, 90);
+        bool hasLiveTag = false;
         if (m_monitoringAvailable && !m_result.detections.isEmpty()) {
             for (int i = 0; i < m_result.detections.size(); ++i) {
                 const Detection &d = m_result.detections[i];
                 QColor color;
                 if (i == 0) {
                     if (!m_result.baselineCalibrated) {
-                        color = QColor(0, 230, 0); // 未设基准时默认绿色
+                        color = QColor(0, 235, 95); // 实时跟踪：亮绿色
                     } else {
                         switch (m_result.anomaly.type) {
                         case AnomalyType::Normal:
-                            color = QColor(0, 230, 0);      // 正常：绿色
+                            color = QColor(0, 235, 95);      // 正常：亮绿色
                             break;
                         case AnomalyType::Tilted:
-                            color = QColor(255, 130, 0);    // 倾斜：橙红色
+                            color = QColor(255, 130, 0);     // 倾斜：橙红色
                             break;
                         case AnomalyType::ScaledLarger:
                         case AnomalyType::ScaledSmaller:
-                            color = QColor(255, 215, 0);    // 尺寸异常：亮黄色
+                            color = QColor(255, 215, 0);     // 尺寸异常：亮黄色
                             break;
                         case AnomalyType::Displaced:
-                            color = QColor(230, 50, 230);   // 位移：品红色
+                            color = QColor(235, 65, 235);    // 位移：品红色
                             break;
                         case AnomalyType::Lost:
-                            color = QColor(255, 50, 50);    // 丢失：红色
+                            color = QColor(255, 65, 65);
                             break;
                         case AnomalyType::Uncalibrated:
                         case AnomalyType::Pending:
-                            color = QColor(210, 180, 80);
+                            color = QColor(240, 200, 70);
                             break;
                         }
                     }
                 } else {
-                    color = QColor(180, 180, 180); // 次要目标浅灰
+                    color = QColor(180, 180, 180);
                 }
 
-                // 目标包围盒
-                p.setPen(QPen(color, 2));
-                p.setBrush(Qt::NoBrush);
                 const QRectF dRect(map(d.box.x, d.box.y),
                                    map(d.box.x + d.box.width, d.box.y + d.box.height));
+                // 外框与加粗四角定位标
+                p.setPen(QPen(color, 2));
+                p.setBrush(Qt::NoBrush);
                 p.drawRect(dRect);
+                const double corner = std::min(12.0, std::min(dRect.width(), dRect.height()) * 0.28);
+                p.setPen(QPen(color, 3));
+                p.drawLine(dRect.topLeft(), dRect.topLeft() + QPointF(corner, 0));
+                p.drawLine(dRect.topLeft(), dRect.topLeft() + QPointF(0, corner));
+                p.drawLine(dRect.topRight(), dRect.topRight() + QPointF(-corner, 0));
+                p.drawLine(dRect.topRight(), dRect.topRight() + QPointF(0, corner));
+                p.drawLine(dRect.bottomLeft(), dRect.bottomLeft() + QPointF(corner, 0));
+                p.drawLine(dRect.bottomLeft(), dRect.bottomLeft() + QPointF(0, -corner));
+                p.drawLine(dRect.bottomRight(), dRect.bottomRight() + QPointF(-corner, 0));
+                p.drawLine(dRect.bottomRight(), dRect.bottomRight() + QPointF(0, -corner));
 
-                // 目标质心
+                // 目标质心与主轴方向线
                 const QPointF c = map(d.center.x, d.center.y);
                 p.setBrush(color);
-                p.drawEllipse(c, 4, 4);
+                p.drawEllipse(c, 3.5, 3.5);
+                if (d.angleReliable) {
+                    const double rad = d.angle * kPi / 180.0;
+                    const double rayLen = std::max(20.0, d.box.height * 0.42 * sy);
+                    const QPointF tip(c.x() + rayLen * std::cos(rad),
+                                      c.y() + rayLen * std::sin(rad));
+                    p.setPen(QPen(color, 2));
+                    p.drawLine(c, tip);
+                    p.drawEllipse(tip, 2.0, 2.0);
+                }
 
-                // 主轴倾斜指示线（随着物体倾斜而实时偏转）
-                const double rad = d.angle * kPi / 180.0;
-                const double rayLen = std::max(25.0, d.box.height * 0.5 * sy);
-                const QPointF tip(c.x() + rayLen * std::cos(rad),
-                                  c.y() + rayLen * std::sin(rad));
-                p.setPen(QPen(color, 2));
-                if (d.angleReliable) p.drawLine(c, tip);
-
-                // 箭头指示尖端
-                if (d.angleReliable) p.drawEllipse(tip, 2, 2);
-
-                // 若有基准，绘制位移连线
-                if (i == 0 && m_result.baselineCalibrated && m_result.baselineDetection.valid) {
-                    const QPointF bc = map(m_result.baselineDetection.center.x,
-                                           m_result.baselineDetection.center.y);
-                    p.setPen(QPen(color, 1, Qt::DashLine));
-                    p.drawLine(bc, c);
+                if (i == 0) {
+                    liveTagColor = color;
+                    liveTagText = QStringLiteral("(%1,%2) Δ%3px")
+                        .arg(int(std::lround(d.center.x)))
+                        .arg(int(std::lround(d.center.y)))
+                        .arg(int(std::lround(m_result.displacement)));
+                    // 把标签锚点换算到非旋转窗口坐标系，确保 180° 旋转时文字依然正立
+                    const QPointF imgAnchor = m_rotate180
+                        ? QPointF(d.box.x + d.box.width, d.box.y + d.box.height)
+                        : QPointF(d.box.x, d.box.y);
+                    QPointF screenAnchor = map(imgAnchor.x(), imgAnchor.y());
+                    if (m_rotate180) {
+                        screenAnchor = QPointF(2.0 * target.center().x() - screenAnchor.x(),
+                                               2.0 * target.center().y() - screenAnchor.y());
+                    }
+                    liveTagAnchor = screenAnchor;
+                    hasLiveTag = true;
                 }
             }
-        } else if (m_monitoringAvailable && m_result.baselineCalibrated) {
-            // 已设基准但无当前目标：仅在基准位置绘制轻量红框，不遮挡其余画面
-            const Detection &b = m_result.baselineDetection;
-            const QRectF baseRect(map(b.box.x, b.box.y),
-                                  map(b.box.x + b.box.width, b.box.y + b.box.height));
-            p.setPen(QPen(QColor(255, 50, 50, 230), 2, Qt::DashLine));
-            p.setBrush(QColor(255, 0, 0, 28));
-            p.drawRect(baseRect);
         }
 
-        p.restore(); // 恢复坐标系，选框文字不受旋转影响
+        p.restore(); // 恢复正立坐标系绘制跟随文字或搜索提示
+
+        if (hasLiveTag) {
+            QFont tagFont = p.font();
+            tagFont.setPointSize(8);
+            tagFont.setBold(true);
+            p.setFont(tagFont);
+            const QFontMetrics fm(tagFont);
+            const QSize sz = fm.size(Qt::TextSingleLine, liveTagText) + QSize(8, 4);
+            const double tx = qBound(target.left() + 2.0, liveTagAnchor.x(), target.right() - sz.width() - 2.0);
+            const double ty = (liveTagAnchor.y() - sz.height() - 3.0 >= target.top() + 2.0)
+                                  ? (liveTagAnchor.y() - sz.height() - 3.0)
+                                  : (liveTagAnchor.y() + 4.0);
+            const QRectF pill(tx, ty, sz.width(), sz.height());
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(15, 20, 28, 175));
+            p.drawRoundedRect(pill, 3, 3);
+            p.setPen(liveTagColor);
+            p.drawText(pill, Qt::AlignCenter, liveTagText);
+        } else if (m_monitoringAvailable && (m_result.trackingActive || m_result.baselineCalibrated)) {
+            // 目标暂时移出视野或被遮挡：仅在左上角给轻量状态条，不在原地残留空框
+            QFont pillFont = p.font();
+            pillFont.setPointSize(8);
+            pillFont.setBold(true);
+            p.setFont(pillFont);
+            const QRectF pill(target.left() + 8, target.top() + 8, 156, 22);
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(183, 28, 28, 185));
+            p.drawRoundedRect(pill, 4, 4);
+            p.setPen(Qt::white);
+            p.drawText(pill, Qt::AlignCenter,
+                       m_result.baselineCalibrated ? QStringLiteral("目标丢失 · 全图搜索中…")
+                                                   : QStringLiteral("全图搜索目标中…"));
+        }
     } else {
         // 无画面时在暗色背景中央给出简洁状态提示，有视频后不在画面上覆盖任何黑框文字
         p.setPen(QColor(185, 190, 198));
@@ -233,6 +267,12 @@ QPoint VideoWidget::widgetToImagePoint(const QPointF &pos, const QRectF &target)
 
 void VideoWidget::mousePressEvent(QMouseEvent *event)
 {
+    if (event->button() == Qt::RightButton) {
+        m_dragging = false;
+        update();
+        emit clearRequested();
+        return;
+    }
     if (event->button() != Qt::LeftButton)
         return;
     const QRectF target = imageRect();
