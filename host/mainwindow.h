@@ -51,6 +51,7 @@ private:
         ColorParams params;
         AutoContourParams autoParams;
         AnomalyMetrics lastAnomaly;
+        TargetStatus lastTargetStatus;
         bool hasTarget = false;
         bool trackingActive = false;
         bool baselineSet = false;
@@ -102,6 +103,7 @@ private:
     QPushButton *m_btnCalibAll = nullptr;
     QPushButton *m_btnResetAll = nullptr;
     QDoubleSpinBox *m_spinTiltThresh = nullptr;
+    QDoubleSpinBox *m_spinToppleThresh = nullptr;
     QSpinBox *m_spinScaleThresh = nullptr;
     QDoubleSpinBox *m_spinDispThresh = nullptr;
     QSpinBox *m_spinMinArea = nullptr;
@@ -110,12 +112,16 @@ private:
     QCheckBox *m_chkShowTrajectory = nullptr;
     QCheckBox *m_chkEnhance = nullptr;
 
-    // 多机位融合看板
+    // 多机位融合看板与目标三态指示条（移动 / 尺寸 / 倾倒）
     QLabel *m_lblFusionStatus = nullptr;
     QLabel *m_lblFusionDetail = nullptr;
+    QLabel *m_lblStateMotion = nullptr;
+    QLabel *m_lblStateSize = nullptr;
+    QLabel *m_lblStatePosture = nullptr;
     QPlainTextEdit *m_txtEventLog = nullptr;
     QTimer m_monitorTimer;
 
     MonitorThresholds m_thresholds;
     QString m_lastReportedSignature;
+    QString m_lastTargetStateSignature;
 };

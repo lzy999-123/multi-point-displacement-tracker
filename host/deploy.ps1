@@ -1,7 +1,8 @@
 ﻿param(
     [string[]]$Executables = @('DisplacementTracker'),
     [string]$QtRoot = 'D:\QT\6.10.1\msvc2022_64',
-    [string]$OpenCvRoot = 'D:\opencv_build\build\install'
+    [string]$OpenCvRoot = 'D:\opencv_build\build\install',
+    [string]$OnnxRuntimeRoot = 'D:\onnxruntime_gpu\onnxruntime-win-x64-gpu-1.20.1'
 )
 $ErrorActionPreference = 'Stop'
 $runtime = Join-Path $PSScriptRoot 'build\run'
@@ -19,8 +20,12 @@ if ($Executables -contains 'DisplacementTracker') {
     foreach ($creatorBuild in (Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'build') -Directory -Filter 'Desktop_Qt_*')) {
         $creatorTarget = Join-Path $creatorBuild.FullName 'release\DisplacementTracker.exe'
         if (Test-Path -LiteralPath $creatorTarget) {
-            Copy-Item -LiteralPath (Join-Path $runtime 'DisplacementTracker.exe') -Destination $creatorTarget -Force
-            $targets += $creatorTarget
+            try {
+                Copy-Item -LiteralPath (Join-Path $runtime 'DisplacementTracker.exe') -Destination $creatorTarget -Force
+                $targets += $creatorTarget
+            } catch {
+                Write-Warning "Skipped locked Qt Creator binary: $creatorTarget ($($_.Exception.Message))"
+            }
         }
     }
 }
@@ -28,6 +33,18 @@ $runtimeDirectories = @($targets | ForEach-Object { Split-Path -Parent $_ } | Se
 foreach ($runtimeDirectory in $runtimeDirectories) {
 foreach ($module in @('core', 'imgproc', 'imgcodecs', 'flann', 'features2d', 'calib3d', 'dnn', 'video', 'tracking')) {
     Copy-Item -LiteralPath (Join-Path $OpenCvRoot "x64\vc17\bin\opencv_${module}4120.dll") -Destination $runtimeDirectory -Force
+}
+foreach ($ortDll in @('onnxruntime.dll', 'onnxruntime_providers_shared.dll')) {
+    $ortSrc = Join-Path $OnnxRuntimeRoot "lib\$ortDll"
+    if (Test-Path -LiteralPath $ortSrc) {
+        Copy-Item -LiteralPath $ortSrc -Destination $runtimeDirectory -Force
+    }
+}
+$modelSrc = Join-Path $PSScriptRoot 'models\yolo26n.onnx'
+if (Test-Path -LiteralPath $modelSrc) {
+    $modelDir = Join-Path $runtimeDirectory 'models'
+    New-Item -ItemType Directory -Path $modelDir -Force | Out-Null
+    Copy-Item -LiteralPath $modelSrc -Destination (Join-Path $modelDir 'yolo26n.onnx') -Force
 }
 if (Test-Path -LiteralPath "$PSScriptRoot\camera-runtime.ini") {
     Copy-Item -LiteralPath "$PSScriptRoot\camera-runtime.ini" -Destination $runtimeDirectory -Force

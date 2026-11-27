@@ -108,15 +108,17 @@ void VideoWidget::paintEvent(QPaintEvent *)
                 const Detection &d = m_result.detections[i];
                 QColor color;
                 if (i == 0) {
-                    if (!m_result.baselineCalibrated) {
-                        color = QColor(0, 235, 95); // 实时跟踪：亮绿色
-                    } else {
+                    if (m_result.baselineCalibrated) {
                         switch (m_result.anomaly.type) {
                         case AnomalyType::Normal:
-                            color = QColor(0, 235, 95);      // 正常：亮绿色
+                            color = (m_result.targetStatus.active && m_result.targetStatus.hasEverMoved)
+                                ? QColor(38, 198, 218)       // 正常但曾移动过：青色提示
+                                : QColor(0, 235, 95);        // 正常：亮绿色
                             break;
                         case AnomalyType::Tilted:
-                            color = QColor(255, 130, 0);     // 倾斜：橙红色
+                            color = m_result.anomaly.toppled
+                                ? QColor(255, 61, 0)         // 倾倒：亮红橙色
+                                : QColor(255, 145, 0);       // 倾斜：橙色
                             break;
                         case AnomalyType::ScaledLarger:
                         case AnomalyType::ScaledSmaller:
@@ -133,6 +135,25 @@ void VideoWidget::paintEvent(QPaintEvent *)
                             color = QColor(240, 200, 70);
                             break;
                         }
+                    } else if (m_result.targetStatus.active) {
+                        const auto &ts = m_result.targetStatus;
+                        if (ts.posture == TargetStatus::PostureState::Toppled) {
+                            color = QColor(255, 61, 0);      // 倾倒：亮红橙色
+                        } else if (ts.posture == TargetStatus::PostureState::Tilted) {
+                            color = QColor(255, 145, 0);     // 倾斜：橙色
+                        } else if (ts.size == TargetStatus::SizeState::Larger
+                                   || ts.size == TargetStatus::SizeState::Smaller) {
+                            color = QColor(255, 215, 0);     // 变大/变小：亮黄色
+                        } else if (ts.motion == TargetStatus::MotionState::Moving
+                                   || ts.motion == TargetStatus::MotionState::Displaced) {
+                            color = QColor(235, 65, 235);    // 移动中/已移位：品红色
+                        } else if (ts.motion == TargetStatus::MotionState::MovedReturned) {
+                            color = QColor(38, 198, 218);    // 曾移动过(已回位)：青色
+                        } else {
+                            color = QColor(0, 235, 95);      // 静止正常：亮绿色
+                        }
+                    } else {
+                        color = QColor(0, 235, 95);          // 实时跟踪：亮绿色
                     }
                 } else {
                     color = QColor(180, 180, 180);
@@ -171,10 +192,14 @@ void VideoWidget::paintEvent(QPaintEvent *)
 
                 if (i == 0) {
                     liveTagColor = color;
-                    liveTagText = QStringLiteral("(%1,%2) Δ%3px")
-                        .arg(int(std::lround(d.center.x)))
-                        .arg(int(std::lround(d.center.y)))
-                        .arg(int(std::lround(m_result.displacement)));
+                    if (m_result.targetStatus.active && !m_result.targetStatus.shortTag.isEmpty()) {
+                        liveTagText = m_result.targetStatus.shortTag;
+                    } else {
+                        liveTagText = QStringLiteral("(%1,%2) Δ%3px")
+                            .arg(int(std::lround(d.center.x)))
+                            .arg(int(std::lround(d.center.y)))
+                            .arg(int(std::lround(m_result.displacement)));
+                    }
                     // 把标签锚点换算到非旋转窗口坐标系，确保 180° 旋转时文字依然正立
                     const QPointF imgAnchor = m_rotate180
                         ? QPointF(d.box.x + d.box.width, d.box.y + d.box.height)
@@ -215,14 +240,18 @@ void VideoWidget::paintEvent(QPaintEvent *)
             pillFont.setPointSize(8);
             pillFont.setBold(true);
             p.setFont(pillFont);
-            const QRectF pill(target.left() + 8, target.top() + 8, 156, 22);
+            const QString lostHint = m_result.targetStatus.hasEverMoved
+                ? QStringLiteral("目标丢失(曾移动) · 搜索中…")
+                : (m_result.baselineCalibrated ? QStringLiteral("目标丢失 · 全图搜索中…")
+                                               : QStringLiteral("全图搜索目标中…"));
+            const QFontMetrics pillFm(pillFont);
+            const QRectF pill(target.left() + 8, target.top() + 8,
+                              std::max(156, pillFm.horizontalAdvance(lostHint) + 18), 22);
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(183, 28, 28, 185));
             p.drawRoundedRect(pill, 4, 4);
             p.setPen(Qt::white);
-            p.drawText(pill, Qt::AlignCenter,
-                       m_result.baselineCalibrated ? QStringLiteral("目标丢失 · 全图搜索中…")
-                                                   : QStringLiteral("全图搜索目标中…"));
+            p.drawText(pill, Qt::AlignCenter, lostHint);
         }
     } else {
         // 无画面时在暗色背景中央给出简洁状态提示，有视频后不在画面上覆盖任何黑框文字

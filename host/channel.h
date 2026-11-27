@@ -41,6 +41,7 @@ struct ChannelResult {
     bool baselineCalibrated = false;
     Detection baselineDetection;
     AnomalyMetrics anomaly;
+    TargetStatus targetStatus;  // 目标实时综合状态（是否移动过 / 变大变小 / 是否倾倒，锁定即输出）
 };
 Q_DECLARE_METATYPE(ChannelResult)
 
@@ -97,6 +98,7 @@ private:
     BaselineState m_baseline;
     MonitorThresholds m_thresholds;
     AnomalyDebouncer m_debouncer;
+    TargetStateTracker m_targetTracker;
     quint64 m_revision = 0;
     qint64 m_lastFrameAtMs = -1;
 
@@ -113,6 +115,9 @@ private:
     QPointF m_prevTrackCenter;
     qint64 m_prevTrackMs = -1;
     double m_smoothSpeed = 0.0;
+    QVector<QPair<QPointF, qint64>> m_motionWindow;
+    cv::Mat m_motionRefGray;
+    qint64 m_motionRefMs = -1;
     QVector<QPair<QPointF, qint64>> m_timedTrajectory;
     bool m_hasStillAnchor = false;
     QPointF m_stillAnchor;

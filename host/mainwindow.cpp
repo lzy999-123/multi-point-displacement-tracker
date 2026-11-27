@@ -28,6 +28,7 @@
 #include "cameraconfigpath.h"
 #include "videowidget.h"
 #include "videoprofile.h"
+#include "yolodetector.h"
 
 MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
     : QMainWindow(parent), m_settingsPath(settingsPath.isEmpty() ? cameraSettingsPath() : settingsPath)
@@ -143,6 +144,8 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
             m_discovery.setTarget(i + 1, hint);
     }
     m_discovery.start();
+    // 后台预加载并预热 YOLO26n，不阻塞界面启动
+    YoloDetector::instance().preloadAsync();
 
     // 默认应用门限
     applyMonitorThresholds();
@@ -282,6 +285,7 @@ QWidget *MainWindow::buildChannelPanel(int index)
             auto &ui = m_channels[index];
             ui.video->setResult(r);
             ui.lastAnomaly = r.anomaly;
+            ui.lastTargetStatus = r.targetStatus;
             ui.hasTarget = r.hasTarget;
             ui.trackingActive = r.trackingActive;
             ui.baselineSet = r.baselineCalibrated;
@@ -343,10 +347,11 @@ QWidget *MainWindow::buildChannelPanel(int index)
         }
         ui.baselineSet = false;
         ui.lastAnomaly = {};
+        ui.lastTargetStatus = {};
         ui.trackingActive = true;
         m_channels[index].channel->pickTarget(x, y);
         updateFusionDecision();
-        statusBar()->showMessage(tr("检测点 %1：已点选 (%2, %3)，实时跟踪已启动（右键可清除）")
+        statusBar()->showMessage(tr("检测点 %1：已点选 (%2, %3)，实时跟踪与状态输出已启动（右键可清除）")
                                     .arg(index + 1).arg(x).arg(y), 4000);
     });
 
@@ -359,12 +364,13 @@ QWidget *MainWindow::buildChannelPanel(int index)
         }
         ui.baselineSet = false;
         ui.lastAnomaly = {};
+        ui.lastTargetStatus = {};
         ui.trackingActive = true;
         m_channels[index].channel->selectTargetRoi(roi);
         updateFusionDecision();
-        appendLog(tr("检测点 %1 已锁定特征目标 (%2, %3, %4×%5)，CSRT 多特征实时跟踪已启动")
+        appendLog(tr("检测点 %1 已锁定特征目标 (%2, %3, %4×%5)，开始实时输出移动/缩放/倾倒状态")
                       .arg(index + 1).arg(roi.x()).arg(roi.y()).arg(roi.width()).arg(roi.height()));
-        statusBar()->showMessage(tr("检测点 %1：已锁定目标 (%2×%3)，实时跟踪中（右键清除，点【标定】可启用告警）")
+        statusBar()->showMessage(tr("检测点 %1：已锁定目标 (%2×%3)，实时输出状态中（右键清除，点【状态归零】可重置起点）")
                                     .arg(index + 1).arg(roi.width()).arg(roi.height()), 5000);
     });
 
@@ -389,29 +395,49 @@ QWidget *MainWindow::buildMonitorDashboard()
     monLayout->setSpacing(6);
 
     // 1. 总览状态横幅
-    m_lblFusionStatus = new QLabel(tr("⚪ 系统待命：左键框选目标即开始实时跟踪"), monitorTab);
+    m_lblFusionStatus = new QLabel(tr("⚪ 系统待命：左键框选目标即开始跟踪并输出状态"), monitorTab);
     m_lblFusionStatus->setObjectName(QStringLiteral("fusion-status"));
     m_lblFusionStatus->setWordWrap(true);
-    m_lblFusionStatus->setFixedHeight(44);
+    m_lblFusionStatus->setFixedHeight(40);
     m_lblFusionStatus->setAlignment(Qt::AlignCenter);
     m_lblFusionStatus->setStyleSheet(QStringLiteral(
-        "background-color: #546e7a; color: #ffffff; font-weight: bold; font-size: 10pt; padding: 4px 8px; border-radius: 5px;"));
+        "background-color: #546e7a; color: #ffffff; font-weight: bold; font-size: 9.5pt; padding: 3px 8px; border-radius: 5px;"));
     monLayout->addWidget(m_lblFusionStatus);
 
     m_lblFusionDetail = new QLabel(tr("三路检测点就绪"), monitorTab);
     m_lblFusionDetail->setObjectName(QStringLiteral("fusion-detail"));
     m_lblFusionDetail->setVisible(false);
 
-    // 2. 三路检测点独立状态卡片（实时坐标、位移、速度与异常状态）
+    // 1.5 目标实时三态看板（是否移动过 / 变大变小 / 是否倾倒，框选跟踪后立即输出）
+    auto *stateRow = new QHBoxLayout;
+    stateRow->setSpacing(6);
+    auto makeStatePill = [&](const QString &objName, const QString &initText) {
+        auto *lbl = new QLabel(initText, monitorTab);
+        lbl->setObjectName(objName);
+        lbl->setFixedHeight(28);
+        lbl->setAlignment(Qt::AlignCenter);
+        lbl->setStyleSheet(QStringLiteral(
+            "background-color: #eceff1; color: #455a64; border: 1px solid #cfd8dc; font-weight: bold; font-size: 8.5pt; border-radius: 4px; padding: 2px 4px;"));
+        return lbl;
+    };
+    m_lblStateMotion = makeStatePill(QStringLiteral("state-motion"), tr("移动：未选目标"));
+    m_lblStateSize = makeStatePill(QStringLiteral("state-size"), tr("尺寸：--"));
+    m_lblStatePosture = makeStatePill(QStringLiteral("state-posture"), tr("姿态：--"));
+    stateRow->addWidget(m_lblStateMotion, 1);
+    stateRow->addWidget(m_lblStateSize, 1);
+    stateRow->addWidget(m_lblStatePosture, 1);
+    monLayout->addLayout(stateRow);
+
+    // 2. 三路检测点独立状态卡片（实时移动、缩放、倾倒状态）
     auto *cardsLayout = new QVBoxLayout;
     cardsLayout->setSpacing(4);
     for (int i = 0; i < kChannelCount; ++i) {
         auto *card = new QWidget(monitorTab);
-        card->setFixedHeight(34);
+        card->setFixedHeight(32);
         card->setStyleSheet(QStringLiteral(
             "QWidget { background-color: #f3f5f8; border: 1px solid #dce2ea; border-radius: 4px; }"));
         auto *row = new QHBoxLayout(card);
-        row->setContentsMargins(8, 3, 8, 3);
+        row->setContentsMargins(8, 2, 8, 2);
         row->setSpacing(6);
 
         auto *nameLbl = new QLabel(tr("检测点%1").arg(i + 1), card);
@@ -441,20 +467,20 @@ QWidget *MainWindow::buildMonitorDashboard()
     auto *actionRow = new QHBoxLayout;
     actionRow->setSpacing(6);
     m_btnCalibAll = new QPushButton(tr("📷 锁定基准"), monitorTab);
-    m_btnCalibAll->setToolTip(tr("将三路当前跟踪目标锁定为基准形态，启用多视角异常告警"));
+    m_btnCalibAll->setToolTip(tr("将三路当前跟踪目标锁定为基准形态，启用多视角分级告警并重置状态起点"));
     m_btnCalibAll->setStyleSheet(QStringLiteral(
-        "background-color: #0288d1; color: white; font-weight: bold; padding: 5px 10px; border-radius: 4px;"));
-    auto *btnZeroTrack = new QPushButton(tr("轨迹归零"), monitorTab);
-    btnZeroTrack->setToolTip(tr("将当前目标位置设为位移原点，并清空运动轨迹尾迹"));
-    btnZeroTrack->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
+        "background-color: #0288d1; color: white; font-weight: bold; padding: 4px 10px; border-radius: 4px;"));
+    auto *btnZeroTrack = new QPushButton(tr("状态归零"), monitorTab);
+    btnZeroTrack->setToolTip(tr("将当前目标形态设为新的初始参考（清空“曾移动过”记录与轨迹尾迹）"));
+    btnZeroTrack->setStyleSheet(QStringLiteral("padding: 4px 8px;"));
     m_btnResetAll = new QPushButton(tr("重置基准"), monitorTab);
-    m_btnResetAll->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
+    m_btnResetAll->setStyleSheet(QStringLiteral("padding: 4px 8px;"));
     auto *btnExportLog = new QPushButton(tr("导出日志"), monitorTab);
-    btnExportLog->setToolTip(tr("导出运行与告警事件日志"));
-    btnExportLog->setStyleSheet(QStringLiteral("padding: 5px 8px;"));
+    btnExportLog->setToolTip(tr("导出运行与状态变化日志"));
+    btnExportLog->setStyleSheet(QStringLiteral("padding: 4px 8px;"));
     auto *btnClearLog = new QPushButton(tr("清空"), monitorTab);
     btnClearLog->setMaximumWidth(52);
-    btnClearLog->setStyleSheet(QStringLiteral("padding: 5px 6px;"));
+    btnClearLog->setStyleSheet(QStringLiteral("padding: 4px 6px;"));
     actionRow->addWidget(m_btnCalibAll, 2);
     actionRow->addWidget(btnZeroTrack, 1);
     actionRow->addWidget(m_btnResetAll, 1);
@@ -471,7 +497,7 @@ QWidget *MainWindow::buildMonitorDashboard()
     // 4. 事件与跟踪记录（占据底部主要空间，清晰易读）
     m_txtEventLog = new QPlainTextEdit(monitorTab);
     m_txtEventLog->setReadOnly(true);
-    m_txtEventLog->setPlaceholderText(tr("多检测点目标跟踪、位移/尺度变化、丢失重找与告警事件将在此记录…"));
+    m_txtEventLog->setPlaceholderText(tr("多检测点目标移动/变大变小/倾倒状态变化与告警记录将在此实时输出…"));
     m_txtEventLog->setStyleSheet(QStringLiteral(
         "background-color: #1c2026; color: #cfd8dc; font-family: Consolas, 'Microsoft YaHei UI', monospace; font-size: 8.5pt; border-radius: 4px;"));
     monLayout->addWidget(m_txtEventLog, 1);
@@ -492,6 +518,12 @@ QWidget *MainWindow::buildMonitorDashboard()
     m_spinTiltThresh->setSingleStep(0.5);
     m_spinTiltThresh->setValue(m_thresholds.tiltThresh);
     m_spinTiltThresh->setSuffix(tr(" °"));
+
+    m_spinToppleThresh = new QDoubleSpinBox(settingsTab);
+    m_spinToppleThresh->setRange(15.0, 75.0);
+    m_spinToppleThresh->setSingleStep(1.0);
+    m_spinToppleThresh->setValue(m_thresholds.toppleThresh);
+    m_spinToppleThresh->setSuffix(tr(" °"));
 
     m_spinScaleThresh = new QSpinBox(settingsTab);
     m_spinScaleThresh->setRange(5, 50);
@@ -522,6 +554,7 @@ QWidget *MainWindow::buildMonitorDashboard()
     m_chkEnhance->setChecked(true);
 
     form->addRow(tr("倾斜报警门限"), m_spinTiltThresh);
+    form->addRow(tr("倾倒判定门限"), m_spinToppleThresh);
     form->addRow(tr("尺寸突变门限"), m_spinScaleThresh);
     form->addRow(tr("位移偏离门限"), m_spinDispThresh);
     form->addRow(tr("最小目标面积"), m_spinMinArea);
@@ -535,6 +568,7 @@ QWidget *MainWindow::buildMonitorDashboard()
     tabs->addTab(settingsTab, tr("参数设置"));
 
     connect(m_spinTiltThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
+    connect(m_spinToppleThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
     connect(m_spinScaleThresh, &QSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
     connect(m_spinDispThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
     connect(m_spinMinArea, &QSpinBox::valueChanged, this, [this](int area) {
@@ -597,13 +631,15 @@ void MainWindow::resetAllTrajectories()
 {
     for (int i = 0; i < kChannelCount; ++i) {
         m_channels[i].channel->resetTrajectoryOrigin();
+        m_channels[i].lastTargetStatus = {};
         m_channels[i].lastDeltaX = 0.0;
         m_channels[i].lastDeltaY = 0.0;
         m_channels[i].lastDisplacement = 0.0;
         m_channels[i].lastSpeed = 0.0;
     }
-    appendLog(tr("已归零所有检测点的位移原点并清空轨迹记录"));
-    statusBar()->showMessage(tr("位移原点与轨迹尾迹已归零"), 3000);
+    m_lastTargetStateSignature.clear();
+    appendLog(tr("已以当前形态重置目标状态起点（清空“曾移动过”记录与轨迹）"));
+    statusBar()->showMessage(tr("目标状态起点与轨迹已归零"), 3000);
     updateFusionDecision();
 }
 
@@ -631,13 +667,14 @@ void MainWindow::clearSingleChannelTarget(int index)
     ui.trackingActive = false;
     ui.baselineSet = false;
     ui.lastAnomaly = {};
+    ui.lastTargetStatus = {};
     ui.lastTargetCenter = QPointF();
     ui.lastDeltaX = 0.0;
     ui.lastDeltaY = 0.0;
     ui.lastDisplacement = 0.0;
     ui.lastSpeed = 0.0;
     ui.lastScaleRatio = 1.0;
-    appendLog(tr("检测点 %1 已清除锁定目标与运动轨迹").arg(index + 1));
+    appendLog(tr("检测点 %1 已清除锁定目标与状态记录").arg(index + 1));
     statusBar()->showMessage(tr("检测点 %1 目标已清除，可重新左键拖拽框选").arg(index + 1), 3000);
     updateFusionDecision();
 }
@@ -651,6 +688,7 @@ void MainWindow::clearAllTargets()
         ui.trackingActive = false;
         ui.baselineSet = false;
         ui.lastAnomaly = {};
+        ui.lastTargetStatus = {};
         ui.lastTargetCenter = QPointF();
         ui.lastDeltaX = 0.0;
         ui.lastDeltaY = 0.0;
@@ -659,14 +697,20 @@ void MainWindow::clearAllTargets()
         ui.lastScaleRatio = 1.0;
     }
     m_lastReportedSignature.clear();
-    appendLog(tr("已清除全部检测点的锁定目标与轨迹"));
+    m_lastTargetStateSignature.clear();
+    appendLog(tr("已清除全部检测点的锁定目标与状态记录"));
     statusBar()->showMessage(tr("已清除全部检测点目标，可在任意一路重新框选"), 3000);
     updateFusionDecision();
 }
 
 void MainWindow::broadcastTargetSignature(int sourceIndex, const TargetSignature &sig)
 {
-    if (!sig.valid || !m_chkCrossViewSync || !m_chkCrossViewSync->isChecked()) return;
+    if (!sig.valid) return;
+    if (sig.yoloClassId >= 0 && !sig.yoloClassName.isEmpty()) {
+        appendLog(tr("检测点 %1 已由 YOLO26n 识别语义类别【%2】，已锚定完整外接框并开启同类防误锁")
+                      .arg(sourceIndex + 1).arg(sig.yoloClassName));
+    }
+    if (!m_chkCrossViewSync || !m_chkCrossViewSync->isChecked()) return;
     int synced = 0;
     for (int i = 0; i < kChannelCount; ++i) {
         if (i == sourceIndex) continue;
@@ -676,6 +720,7 @@ void MainWindow::broadcastTargetSignature(int sourceIndex, const TargetSignature
         ui.hasTarget = false;
         ui.trackingActive = true;
         ui.lastAnomaly = {};
+        ui.lastTargetStatus = {};
         ui.lastDeltaX = 0.0;
         ui.lastDeltaY = 0.0;
         ui.lastDisplacement = 0.0;
@@ -685,10 +730,13 @@ void MainWindow::broadcastTargetSignature(int sourceIndex, const TargetSignature
         ++synced;
     }
     if (synced > 0) {
-        appendLog(tr("已联动同步检测点 %1 的目标特征至其余 %2 路，自动全图搜索并锁定中…")
-                      .arg(sourceIndex + 1).arg(synced));
-        statusBar()->showMessage(tr("已由检测点 %1 联动其余 %2 路自动搜寻同特征目标")
-                                    .arg(sourceIndex + 1).arg(synced), 4000);
+        const QString modeHint = (sig.yoloClassId >= 0 && !sig.yoloClassName.isEmpty())
+            ? tr("仅匹配【%1】+ 同外观（3 帧确认）").arg(sig.yoloClassName)
+            : tr("多特征外观+形状门控（3 帧确认）");
+        appendLog(tr("已联动同步检测点 %1 目标特征至其余 %2 路（%3）…")
+                      .arg(sourceIndex + 1).arg(synced).arg(modeHint));
+        statusBar()->showMessage(tr("已由检测点 %1 联动其余 %2 路：%3")
+                                    .arg(sourceIndex + 1).arg(synced).arg(modeHint), 4000);
         updateFusionDecision();
     }
 }
@@ -696,6 +744,7 @@ void MainWindow::broadcastTargetSignature(int sourceIndex, const TargetSignature
 void MainWindow::applyMonitorThresholds()
 {
     m_thresholds.tiltThresh = m_spinTiltThresh ? m_spinTiltThresh->value() : 8.0;
+    m_thresholds.toppleThresh = m_spinToppleThresh ? m_spinToppleThresh->value() : 35.0;
     m_thresholds.scaleThresh = m_spinScaleThresh ? (m_spinScaleThresh->value() / 100.0) : 0.15;
     m_thresholds.dispThresh = m_spinDispThresh ? m_spinDispThresh->value() : 15.0;
 
@@ -713,7 +762,9 @@ void MainWindow::applyDetectorMode(int modeIndex)
         c.hasTarget = false;
         c.trackingActive = false;
         c.lastAnomaly = {};
+        c.lastTargetStatus = {};
     }
+    m_lastTargetStateSignature.clear();
     updateFusionDecision();
     appendLog(tr("切换检测模式为：%1").arg(m_comboMode->currentText()));
 }
@@ -723,9 +774,18 @@ void MainWindow::updateFusionDecision()
     const qint64 now = monitorNowMs();
     int unavailable = 0, uncalibrated = 0, pending = 0, lost = 0;
     int trackingLive = 0, trackingSearching = 0;
-    int tilted = 0, scaledLarger = 0, scaledSmaller = 0, displaced = 0, normalCount = 0;
+    int tilted = 0, toppledCalib = 0, scaledLarger = 0, scaledSmaller = 0, displaced = 0, normalCount = 0;
     QList<int> lostChannels, changedChannels;
     QStringList alertDetails;
+
+    // 跨视角实时目标综合状态统计（锁定目标后自动生效，无需先手动“锁定基准”）
+    int statusActiveCount = 0, statusVisibleCount = 0, statusLostCount = 0;
+    int statusMovingNow = 0, statusDisplaced = 0, statusEverMoved = 0;
+    int statusLarger = 0, statusSmaller = 0;
+    int statusToppled = 0, statusTilted = 0, statusEverToppled = 0;
+    double maxDispNow = 0.0, maxDispEver = 0.0;
+    double maxLargerPct = 0.0, maxSmallerPct = 0.0, maxAngleDeg = 0.0;
+    QStringList statusChannelNotes;
 
     const auto setCard = [](ChannelUi &ui, const QString &badgeText, const QString &badgeColor, const QString &detailText) {
         if (ui.cardBadge) {
@@ -736,6 +796,17 @@ void MainWindow::updateFusionDecision()
         }
         if (ui.cardDetail && ui.cardDetail->text() != detailText)
             ui.cardDetail->setText(detailText);
+    };
+
+    const auto setStatePill = [](QLabel *lbl, const QString &text, const QString &bg, const QString &fg,
+                                 const QString &border, const QString &valueKey) {
+        if (!lbl) return;
+        lbl->setProperty("monitorValue", valueKey);
+        if (lbl->text() != text) lbl->setText(text);
+        const QString style = QStringLiteral(
+            "background-color: %1; color: %2; border: 1px solid %3; font-weight: bold; font-size: 8.5pt; border-radius: 4px; padding: 2px 4px;")
+            .arg(bg, fg, border);
+        if (lbl->styleSheet() != style) lbl->setStyleSheet(style);
     };
 
     for (int i = 0; i < kChannelCount; ++i) {
@@ -752,27 +823,100 @@ void MainWindow::updateFusionDecision()
                     opened ? tr("ESP32 无线连接中或画面过期") : tr("点击连接或等待自动发现"));
             continue;
         }
+
+        // 汇总该检测点的实时目标综合状态
+        if (ui.lastTargetStatus.active) {
+            const auto &ts = ui.lastTargetStatus;
+            ++statusActiveCount;
+            if (ts.hasEverMoved) {
+                ++statusEverMoved;
+                maxDispEver = std::max(maxDispEver, ts.maxDisplacement);
+            }
+            if (ts.hasEverToppled) ++statusEverToppled;
+            if (ts.visible) {
+                ++statusVisibleCount;
+                if (ts.currentlyMoving) ++statusMovingNow;
+                if (ts.currentlyDisplaced) {
+                    ++statusDisplaced;
+                    maxDispNow = std::max(maxDispNow, ts.displacement);
+                }
+                if (ts.size == TargetStatus::SizeState::Larger) {
+                    ++statusLarger;
+                    maxLargerPct = std::max(maxLargerPct, std::max(0.0, ts.sizeChangePct));
+                } else if (ts.size == TargetStatus::SizeState::Smaller) {
+                    ++statusSmaller;
+                    maxSmallerPct = std::max(maxSmallerPct, std::max(0.0, -ts.sizeChangePct));
+                }
+                if (ts.posture == TargetStatus::PostureState::Toppled) {
+                    ++statusToppled;
+                    if (ts.angleReliable) maxAngleDeg = std::max(maxAngleDeg, ts.deltaAngle);
+                } else if (ts.posture == TargetStatus::PostureState::Tilted) {
+                    ++statusTilted;
+                    if (ts.angleReliable) maxAngleDeg = std::max(maxAngleDeg, ts.deltaAngle);
+                }
+                if (ts.posture != TargetStatus::PostureState::Normal
+                    || ts.size != TargetStatus::SizeState::Normal
+                    || ts.motion != TargetStatus::MotionState::Stationary) {
+                    statusChannelNotes << tr("点%1:%2").arg(i + 1).arg(ts.shortTag);
+                }
+            } else {
+                ++statusLostCount;
+                statusChannelNotes << tr("点%1:丢失").arg(i + 1);
+            }
+        }
+
         if (!ui.baselineSet || ui.lastAnomaly.type == AnomalyType::Uncalibrated) {
             ++uncalibrated;
             if (ui.trackingActive && ui.hasTarget) {
                 ++trackingLive;
-                const QString dxStr = QStringLiteral("%1%2").arg(ui.lastDeltaX >= 0.0 ? QStringLiteral("+") : QString()).arg(ui.lastDeltaX, 0, 'f', 0);
-                const QString dyStr = QStringLiteral("%1%2").arg(ui.lastDeltaY >= 0.0 ? QStringLiteral("+") : QString()).arg(ui.lastDeltaY, 0, 'f', 0);
-                setCard(ui, tr("跟踪中"), QStringLiteral("#0288d1"),
-                        tr("(%1,%2) · Δ%3px (%4,%5) · %6px/s · %7%")
-                            .arg(int(std::lround(ui.lastTargetCenter.x())))
-                            .arg(int(std::lround(ui.lastTargetCenter.y())))
-                            .arg(ui.lastDisplacement, 0, 'f', 1)
-                            .arg(dxStr, dyStr)
-                            .arg(ui.lastSpeed, 0, 'f', 0)
-                            .arg(ui.lastScaleRatio * 100.0, 0, 'f', 0));
+                if (ui.lastTargetStatus.active) {
+                    const auto &ts = ui.lastTargetStatus;
+                    QString badgeText = tr("静止正常");
+                    QString badgeColor = QStringLiteral("#2e7d32");
+                    if (ts.posture == TargetStatus::PostureState::Toppled) {
+                        badgeText = tr("已倾倒");
+                        badgeColor = QStringLiteral("#c62828");
+                    } else if (ts.posture == TargetStatus::PostureState::Tilted) {
+                        badgeText = tr("倾斜 %1°").arg(ts.deltaAngle, 0, 'f', 0);
+                        badgeColor = QStringLiteral("#e65100");
+                    } else if (ts.size == TargetStatus::SizeState::Larger) {
+                        badgeText = tr("变大 +%1%").arg(std::max(0.0, ts.sizeChangePct), 0, 'f', 0);
+                        badgeColor = QStringLiteral("#d84315");
+                    } else if (ts.size == TargetStatus::SizeState::Smaller) {
+                        badgeText = tr("变小 -%1%").arg(std::max(0.0, -ts.sizeChangePct), 0, 'f', 0);
+                        badgeColor = QStringLiteral("#ef6c00");
+                    } else if (ts.motion == TargetStatus::MotionState::Moving) {
+                        badgeText = tr("移动中");
+                        badgeColor = QStringLiteral("#0288d1");
+                    } else if (ts.motion == TargetStatus::MotionState::Displaced) {
+                        badgeText = tr("已移动");
+                        badgeColor = QStringLiteral("#8e24aa");
+                    } else if (ts.motion == TargetStatus::MotionState::MovedReturned) {
+                        badgeText = tr("曾移动过");
+                        badgeColor = QStringLiteral("#00838f");
+                    }
+                    setCard(ui, badgeText, badgeColor, ts.summaryText);
+                } else {
+                    const QString dxStr = QStringLiteral("%1%2").arg(ui.lastDeltaX >= 0.0 ? QStringLiteral("+") : QString()).arg(ui.lastDeltaX, 0, 'f', 0);
+                    const QString dyStr = QStringLiteral("%1%2").arg(ui.lastDeltaY >= 0.0 ? QStringLiteral("+") : QString()).arg(ui.lastDeltaY, 0, 'f', 0);
+                    setCard(ui, tr("跟踪中"), QStringLiteral("#0288d1"),
+                            tr("(%1,%2) · Δ%3px (%4,%5) · %6px/s · %7%")
+                                .arg(int(std::lround(ui.lastTargetCenter.x())))
+                                .arg(int(std::lround(ui.lastTargetCenter.y())))
+                                .arg(ui.lastDisplacement, 0, 'f', 1)
+                                .arg(dxStr, dyStr)
+                                .arg(ui.lastSpeed, 0, 'f', 0)
+                                .arg(ui.lastScaleRatio * 100.0, 0, 'f', 0));
+                }
             } else if (ui.trackingActive && !ui.hasTarget) {
                 ++trackingSearching;
-                setCard(ui, tr("搜索中"), QStringLiteral("#f57c00"),
-                        tr("目标暂离/遮挡，正在全图重找…（右键清除）"));
+                const QString lostDesc = ui.lastTargetStatus.hasEverMoved
+                    ? tr("目标丢失（曾移动最大 %1px），正在全图重找…").arg(ui.lastTargetStatus.maxDisplacement, 0, 'f', 0)
+                    : tr("目标暂离/遮挡，正在全图重找…（右键清除）");
+                setCard(ui, tr("搜索中"), QStringLiteral("#f57c00"), lostDesc);
             } else {
                 setCard(ui, tr("待选目标"), QStringLiteral("#757575"),
-                        tr("左键拖拽框选目标即开始实时跟踪（右键清除）"));
+                        tr("左键拖拽框选目标即开始跟踪并输出状态"));
             }
             continue;
         }
@@ -780,10 +924,16 @@ void MainWindow::updateFusionDecision()
         const QString posTag = ui.hasTarget
             ? tr("(%1,%2) ").arg(int(std::lround(ui.lastTargetCenter.x()))).arg(int(std::lround(ui.lastTargetCenter.y())))
             : QString();
+        const QString extraSummary = ui.lastTargetStatus.active
+            ? ui.lastTargetStatus.summaryText
+            : QString();
         switch (a.type) {
         case AnomalyType::Lost: {
             ++lost; lostChannels << (i + 1);
-            setCard(ui, tr("目标丢失"), QStringLiteral("#c62828"), tr("全图搜索中 · 可能移出视野或被遮挡"));
+            setCard(ui, tr("目标丢失"), QStringLiteral("#c62828"),
+                    ui.lastTargetStatus.hasEverMoved
+                        ? tr("全图搜索中 · 丢失前曾移动最大 %1px").arg(ui.lastTargetStatus.maxDisplacement, 0, 'f', 0)
+                        : tr("全图搜索中 · 可能移出视野或被遮挡"));
             alertDetails << tr("检测点%1 丢失").arg(i + 1);
             break;
         }
@@ -795,10 +945,17 @@ void MainWindow::updateFusionDecision()
         }
         case AnomalyType::Tilted: {
             ++tilted; changedChannels << (i + 1);
-            const QString b = tr("倾斜 %1°").arg(a.deltaAngle, 0, 'f', 1);
-            setCard(ui, b, QStringLiteral("#e65100"),
-                    tr("%1倾斜 %2° · 面积 %3% · Δ%4px")
-                        .arg(posTag).arg(a.deltaAngle, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+            if (a.toppled) ++toppledCalib;
+            const QString b = a.toppled
+                ? ((a.angleReliable && a.deltaAngle >= m_thresholds.tiltThresh)
+                       ? tr("倾倒 %1°").arg(a.deltaAngle, 0, 'f', 0)
+                       : tr("已倾倒"))
+                : tr("倾斜 %1°").arg(a.deltaAngle, 0, 'f', 1);
+            setCard(ui, b, a.toppled ? QStringLiteral("#c62828") : QStringLiteral("#e65100"),
+                    extraSummary.isEmpty()
+                        ? tr("%1%2 · 面积 %3% · Δ%4px")
+                              .arg(posTag, b).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1)
+                        : extraSummary);
             alertDetails << tr("检测点%1 %2").arg(i + 1).arg(b);
             break;
         }
@@ -807,8 +964,10 @@ void MainWindow::updateFusionDecision()
             const double pct = (a.scaleRatio - 1.0) * 100.0;
             const QString b = tr("变大 +%1%").arg(pct, 0, 'f', 0);
             setCard(ui, b, QStringLiteral("#d84315"),
-                    tr("%1变大 +%2%（%3%）· Δ%4px")
-                        .arg(posTag).arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+                    extraSummary.isEmpty()
+                        ? tr("%1变大 +%2%（%3%）· Δ%4px")
+                              .arg(posTag).arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1)
+                        : extraSummary);
             alertDetails << tr("检测点%1 %2").arg(i + 1).arg(b);
             break;
         }
@@ -817,71 +976,183 @@ void MainWindow::updateFusionDecision()
             const double pct = (1.0 - a.scaleRatio) * 100.0;
             const QString b = tr("变小 -%1%").arg(pct, 0, 'f', 0);
             setCard(ui, b, QStringLiteral("#d84315"),
-                    tr("%1变小 -%2%（%3%）· Δ%4px")
-                        .arg(posTag).arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1));
+                    extraSummary.isEmpty()
+                        ? tr("%1变小 -%2%（%3%）· Δ%4px")
+                              .arg(posTag).arg(pct, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.displacement, 0, 'f', 1)
+                        : extraSummary);
             alertDetails << tr("检测点%1 %2").arg(i + 1).arg(b);
             break;
         }
         case AnomalyType::Displaced: {
             ++displaced; changedChannels << (i + 1);
             const QString b = tr("移动 %1px").arg(a.displacement, 0, 'f', 0);
-            QStringList dirs;
-            if (std::abs(a.deltaX) >= 4.0)
-                dirs << (a.deltaX > 0 ? tr("右%1").arg(a.deltaX, 0, 'f', 0) : tr("左%1").arg(-a.deltaX, 0, 'f', 0));
-            if (std::abs(a.deltaY) >= 4.0)
-                dirs << (a.deltaY > 0 ? tr("下%1").arg(a.deltaY, 0, 'f', 0) : tr("上%1").arg(-a.deltaY, 0, 'f', 0));
-            const QString dirStr = dirs.isEmpty() ? QString() : tr("（%1）").arg(dirs.join(QStringLiteral("、")));
+            const QString dir = ArtifactGeometry::formatDirectionCompact(a.deltaX, a.deltaY);
+            const QString dirStr = dir.isEmpty() ? QString() : tr("（%1）").arg(dir);
             setCard(ui, b, QStringLiteral("#8e24aa"),
-                    tr("%1Δ%2px%3 · %4px/s · %5%")
-                        .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(dirStr).arg(ui.lastSpeed, 0, 'f', 0).arg(a.scaleRatio * 100.0, 0, 'f', 0));
+                    extraSummary.isEmpty()
+                        ? tr("%1Δ%2px%3 · %4px/s · %5%")
+                              .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(dirStr).arg(ui.lastSpeed, 0, 'f', 0).arg(a.scaleRatio * 100.0, 0, 'f', 0)
+                        : extraSummary);
             alertDetails << tr("检测点%1 移动%2px%3").arg(i + 1).arg(a.displacement, 0, 'f', 1).arg(dirStr);
             break;
         }
         case AnomalyType::Normal: {
             ++normalCount;
-            const QString metric = a.angleReliable
-                ? tr("%1Δ%2px · 面积%3% · 倾角%4°")
-                      .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.deltaAngle, 0, 'f', 1)
-                : tr("%1Δ%2px · 面积%3% · %4px/s")
-                      .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(ui.lastSpeed, 0, 'f', 0);
-            setCard(ui, tr("正常"), QStringLiteral("#2e7d32"), metric);
+            const bool movedBefore = ui.lastTargetStatus.active && ui.lastTargetStatus.hasEverMoved;
+            const QString metric = !extraSummary.isEmpty()
+                ? extraSummary
+                : (a.angleReliable
+                       ? tr("%1Δ%2px · 面积%3% · 倾角%4°")
+                             .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(a.deltaAngle, 0, 'f', 1)
+                       : tr("%1Δ%2px · 面积%3% · %4px/s")
+                             .arg(posTag).arg(a.displacement, 0, 'f', 1).arg(a.scaleRatio * 100.0, 0, 'f', 0).arg(ui.lastSpeed, 0, 'f', 0));
+            setCard(ui, movedBefore ? tr("曾移动过") : tr("正常"),
+                    movedBefore ? QStringLiteral("#00838f") : QStringLiteral("#2e7d32"), metric);
             break;
         }
         case AnomalyType::Uncalibrated: break;
         }
     }
 
+    // ==================== 更新目标三态指示条（移动 / 尺寸 / 姿态） ====================
+    QString fusedMotionVal = QStringLiteral("none"), fusedMotionLabel = tr("未选目标");
+    QString fusedSizeVal = QStringLiteral("none"), fusedSizeLabel = tr("--");
+    QString fusedPostureVal = QStringLiteral("none"), fusedPostureLabel = tr("--");
+
+    if (statusActiveCount == 0) {
+        setStatePill(m_lblStateMotion, tr("移动：未选目标"), QStringLiteral("#eceff1"), QStringLiteral("#455a64"), QStringLiteral("#cfd8dc"), fusedMotionVal);
+        setStatePill(m_lblStateSize, tr("尺寸：--"), QStringLiteral("#eceff1"), QStringLiteral("#455a64"), QStringLiteral("#cfd8dc"), fusedSizeVal);
+        setStatePill(m_lblStatePosture, tr("姿态：--"), QStringLiteral("#eceff1"), QStringLiteral("#455a64"), QStringLiteral("#cfd8dc"), fusedPostureVal);
+        m_lastTargetStateSignature.clear();
+    } else {
+        // 1) 移动维度（是否移动过）
+        if (statusVisibleCount == 0) {
+            fusedMotionVal = QStringLiteral("lost");
+            fusedMotionLabel = statusEverMoved > 0 ? tr("目标丢失(曾移动)") : tr("目标丢失");
+            setStatePill(m_lblStateMotion, tr("移动：%1").arg(fusedMotionLabel),
+                         QStringLiteral("#ffebee"), QStringLiteral("#b71c1c"), QStringLiteral("#ef9a9a"), fusedMotionVal);
+        } else if (statusMovingNow > 0) {
+            fusedMotionVal = QStringLiteral("moving");
+            fusedMotionLabel = tr("正在移动");
+            setStatePill(m_lblStateMotion, tr("移动：正在移动"),
+                         QStringLiteral("#e3f2fd"), QStringLiteral("#1565c0"), QStringLiteral("#90caf9"), fusedMotionVal);
+        } else if (statusDisplaced > 0) {
+            fusedMotionVal = QStringLiteral("displaced");
+            const bool multiSpatial = (statusDisplaced >= 2) || ((statusLarger > 0 || statusSmaller > 0) && statusDisplaced >= 1);
+            fusedMotionLabel = multiSpatial
+                ? tr("已移动(多视角)")
+                : tr("已移动 Δ%1px").arg(maxDispNow, 0, 'f', 0);
+            setStatePill(m_lblStateMotion, tr("移动：%1").arg(fusedMotionLabel),
+                         QStringLiteral("#f3e5f5"), QStringLiteral("#6a1b9a"), QStringLiteral("#ce93d8"), fusedMotionVal);
+        } else if (statusEverMoved > 0) {
+            fusedMotionVal = QStringLiteral("moved_returned");
+            fusedMotionLabel = tr("曾移动过(已回位)");
+            setStatePill(m_lblStateMotion, tr("移动：曾移动过(已回位)"),
+                         QStringLiteral("#e0f7fa"), QStringLiteral("#006064"), QStringLiteral("#80deea"), fusedMotionVal);
+        } else {
+            fusedMotionVal = QStringLiteral("stationary");
+            fusedMotionLabel = tr("未移动");
+            setStatePill(m_lblStateMotion, tr("移动：未移动"),
+                         QStringLiteral("#e8f5e9"), QStringLiteral("#1b5e20"), QStringLiteral("#a5d6a7"), fusedMotionVal);
+        }
+
+        // 2) 尺寸维度（变大 / 变小）
+        if (statusVisibleCount == 0) {
+            fusedSizeVal = QStringLiteral("none");
+            fusedSizeLabel = tr("--");
+            setStatePill(m_lblStateSize, tr("尺寸：--"),
+                         QStringLiteral("#eceff1"), QStringLiteral("#455a64"), QStringLiteral("#cfd8dc"), fusedSizeVal);
+        } else if (statusLarger > 0 && statusSmaller > 0) {
+            fusedSizeVal = QStringLiteral("spatial_move");
+            fusedSizeLabel = tr("异向缩放(空间移动)");
+            setStatePill(m_lblStateSize, tr("尺寸：异向缩放"),
+                         QStringLiteral("#fff3e0"), QStringLiteral("#e65100"), QStringLiteral("#ffcc80"), fusedSizeVal);
+        } else if (statusLarger > 0) {
+            fusedSizeVal = QStringLiteral("larger");
+            fusedSizeLabel = tr("变大 +%1%").arg(maxLargerPct, 0, 'f', 0);
+            setStatePill(m_lblStateSize, tr("尺寸：%1").arg(fusedSizeLabel),
+                         QStringLiteral("#fbe9e7"), QStringLiteral("#bf360c"), QStringLiteral("#ffab91"), fusedSizeVal);
+        } else if (statusSmaller > 0) {
+            fusedSizeVal = QStringLiteral("smaller");
+            fusedSizeLabel = tr("变小 -%1%").arg(maxSmallerPct, 0, 'f', 0);
+            setStatePill(m_lblStateSize, tr("尺寸：%1").arg(fusedSizeLabel),
+                         QStringLiteral("#fff8e1"), QStringLiteral("#e65100"), QStringLiteral("#ffe082"), fusedSizeVal);
+        } else {
+            fusedSizeVal = QStringLiteral("normal");
+            fusedSizeLabel = tr("正常");
+            setStatePill(m_lblStateSize, tr("尺寸：正常"),
+                         QStringLiteral("#e8f5e9"), QStringLiteral("#1b5e20"), QStringLiteral("#a5d6a7"), fusedSizeVal);
+        }
+
+        // 3) 姿态维度（是否倾倒）
+        if (statusVisibleCount == 0) {
+            fusedPostureVal = QStringLiteral("none");
+            fusedPostureLabel = statusEverToppled > 0 ? tr("曾倾倒") : tr("--");
+            setStatePill(m_lblStatePosture, tr("姿态：%1").arg(fusedPostureLabel),
+                         QStringLiteral("#eceff1"), QStringLiteral("#455a64"), QStringLiteral("#cfd8dc"), fusedPostureVal);
+        } else if (statusToppled > 0) {
+            fusedPostureVal = QStringLiteral("toppled");
+            fusedPostureLabel = (maxAngleDeg >= m_thresholds.tiltThresh)
+                ? tr("已倾倒 %1°").arg(maxAngleDeg, 0, 'f', 0)
+                : tr("已倾倒(倒伏)");
+            setStatePill(m_lblStatePosture, tr("姿态：%1").arg(fusedPostureLabel),
+                         QStringLiteral("#ffebee"), QStringLiteral("#b71c1c"), QStringLiteral("#ef9a9a"), fusedPostureVal);
+        } else if (statusTilted > 0) {
+            fusedPostureVal = QStringLiteral("tilted");
+            fusedPostureLabel = tr("倾斜 %1°").arg(maxAngleDeg, 0, 'f', 1);
+            setStatePill(m_lblStatePosture, tr("姿态：%1").arg(fusedPostureLabel),
+                         QStringLiteral("#fff3e0"), QStringLiteral("#e65100"), QStringLiteral("#ffcc80"), fusedPostureVal);
+        } else {
+            fusedPostureVal = QStringLiteral("normal");
+            fusedPostureLabel = tr("未倾倒");
+            setStatePill(m_lblStatePosture, tr("姿态：未倾倒"),
+                         QStringLiteral("#e8f5e9"), QStringLiteral("#1b5e20"), QStringLiteral("#a5d6a7"), fusedPostureVal);
+        }
+
+        const QString targetSig = QStringLiteral("%1|%2|%3|%4")
+            .arg(fusedMotionVal, fusedSizeVal, fusedPostureVal).arg(statusEverMoved > 0 ? 1 : 0);
+        if (targetSig != m_lastTargetStateSignature) {
+            const QString noteStr = statusChannelNotes.isEmpty()
+                ? QString()
+                : QStringLiteral(" [%1]").arg(statusChannelNotes.join(QStringLiteral(", ")));
+            appendLog(tr("目标当前状态：%1 ｜ 尺寸：%2 ｜ 姿态：%3%4")
+                          .arg(fusedMotionLabel, fusedSizeLabel, fusedPostureLabel, noteStr));
+            m_lastTargetStateSignature = targetSig;
+        }
+    }
+
+    // ==================== 顶部融合横幅（保持 monitorState / monitorSeverity 契约） ====================
     const int changedTotal = tilted + scaledLarger + scaledSmaller + displaced;
-    QString state, severity, text, color, snapTag;
+    QString state, severity, text, color;
     if (lost > 0) {
         state = QStringLiteral("lost");
         if (lost >= 2) {
             severity = QStringLiteral("confirmed");
             color = QStringLiteral("#b71c1c");
-            snapTag = QStringLiteral("multi-lost");
             text = tr("🚨 多视角确认告警：目标丢失（%1/3 检测点不可见）").arg(lost);
         } else {
             severity = QStringLiteral("single");
             color = QStringLiteral("#d84315");
-            snapTag = QStringLiteral("single-lost");
             text = tr("⚠️ 单视角预警：检测点 %1 目标不可见（另 %2 路正常，疑似遮挡）")
                        .arg(lostChannels.first()).arg(normalCount);
         }
     } else if (changedTotal > 0) {
         state = QStringLiteral("changed");
         QStringList kinds;
+        if (toppledCalib > 0) kinds << tr("倾倒 %1 路").arg(toppledCalib);
+        if (tilted - toppledCalib > 0) kinds << tr("倾斜 %1 路").arg(tilted - toppledCalib);
         if (scaledLarger > 0) kinds << tr("变大 %1 路").arg(scaledLarger);
         if (scaledSmaller > 0) kinds << tr("变小 %1 路").arg(scaledSmaller);
         if (displaced > 0) kinds << tr("移动 %1 路").arg(displaced);
-        if (tilted > 0) kinds << tr("倾斜 %1 路").arg(tilted);
         const QString summary = kinds.join(QStringLiteral(" / "));
 
         if (changedTotal >= 2) {
             severity = QStringLiteral("confirmed");
             color = QStringLiteral("#c62828");
-            snapTag = QStringLiteral("multi-change");
             QString interp;
-            if ((scaledLarger > 0 || scaledSmaller > 0) && displaced > 0)
+            if (toppledCalib > 0)
+                interp = tr("（目标倾倒）");
+            else if ((scaledLarger > 0 || scaledSmaller > 0) && displaced > 0)
                 interp = tr("（目标空间移动）");
             else if (scaledLarger >= 2)
                 interp = tr("（目标变大）");
@@ -895,27 +1166,48 @@ void MainWindow::updateFusionDecision()
         } else {
             severity = QStringLiteral("single");
             color = QStringLiteral("#ef6c00");
-            snapTag = QStringLiteral("single-change");
             text = tr("⚠️ 单视角变化提示：检测点 %1（%2）").arg(changedChannels.first()).arg(summary);
         }
     } else if (unavailable > 0) {
         state = QStringLiteral("unavailable");
         severity = QStringLiteral("incomplete");
-        color = QStringLiteral("#6d4c41");
-        text = tr("连接未就绪：%1 路 ESP32 无线画面离线").arg(unavailable);
+        if (statusActiveCount > 0) {
+            color = statusToppled > 0 ? QStringLiteral("#c62828")
+                : (statusTilted > 0 || statusLarger > 0 || statusSmaller > 0 || statusDisplaced > 0)
+                    ? QStringLiteral("#ef6c00") : QStringLiteral("#455a64");
+            text = tr("%1 路离线 ｜ 跟踪状态：%2 · 尺寸%3 · %4")
+                       .arg(unavailable).arg(fusedMotionLabel, fusedSizeLabel, fusedPostureLabel);
+        } else {
+            color = QStringLiteral("#6d4c41");
+            text = tr("连接未就绪：%1 路 ESP32 无线画面离线").arg(unavailable);
+        }
     } else if (uncalibrated > 0) {
         state = QStringLiteral("uncalibrated");
         severity = QStringLiteral("incomplete");
-        if (trackingLive > 0 || trackingSearching > 0) {
+        if (statusActiveCount > 0) {
+            const bool hasLiveChange = (statusToppled > 0 || statusTilted > 0
+                || statusLarger > 0 || statusSmaller > 0 || statusDisplaced > 0 || statusMovingNow > 0);
+            if (statusToppled > 0) {
+                color = QStringLiteral("#c62828");
+            } else if (hasLiveChange) {
+                color = QStringLiteral("#ef6c00");
+            } else if (statusEverMoved > 0) {
+                color = QStringLiteral("#00838f");
+            } else {
+                color = QStringLiteral("#2e7d32");
+            }
+            const QString searchHint = trackingSearching > 0 ? tr("，%1路搜索中").arg(trackingSearching) : QString();
+            text = tr("🎯 跟踪状态（%1/3 路%2）：%3 · 尺寸%4 · %5")
+                       .arg(statusVisibleCount).arg(searchHint, fusedMotionLabel, fusedSizeLabel, fusedPostureLabel);
+        } else if (trackingLive > 0 || trackingSearching > 0) {
             color = QStringLiteral("#0277bd");
             const QString searchHint = trackingSearching > 0
                 ? tr("，%1 路搜索中").arg(trackingSearching)
                 : QString();
-            text = tr("🔵 实时跟踪中（%1/3 路已锁定%2）· 点击【锁定基准】可启用异常告警")
-                       .arg(trackingLive).arg(searchHint);
+            text = tr("🔵 实时跟踪中（%1/3 路已锁定%2）").arg(trackingLive).arg(searchHint);
         } else {
             color = QStringLiteral("#546e7a");
-            text = tr("待选目标：%1 路未锁定（左键拖拽框选目标即开始实时跟踪）").arg(uncalibrated);
+            text = tr("待选目标：%1 路未锁定（左键拖拽框选目标即开始跟踪并输出状态）").arg(uncalibrated);
         }
     } else if (pending > 0) {
         state = QStringLiteral("pending");
@@ -926,7 +1218,9 @@ void MainWindow::updateFusionDecision()
         state = QStringLiteral("normal");
         severity = QStringLiteral("normal");
         color = QStringLiteral("#2e7d32");
-        text = tr("✅ 多检测点跟踪稳定：三视角均在基准阈值内");
+        text = statusEverMoved > 0
+            ? tr("✅ 三视角在基准阈值内（曾移动过，现已回位）")
+            : tr("✅ 多检测点跟踪稳定：三视角均在基准阈值内");
     }
 
     if (unavailable > 0 && (lost > 0 || changedTotal > 0))
@@ -936,16 +1230,19 @@ void MainWindow::updateFusionDecision()
     m_lblFusionStatus->setProperty("monitorSeverity", severity);
     if (m_lblFusionStatus->text() != text) m_lblFusionStatus->setText(text);
     const QString style = QStringLiteral(
-        "background-color: %1; color: white; font-weight: bold; font-size: 10pt; padding: 4px 8px; border-radius: 5px;").arg(color);
+        "background-color: %1; color: white; font-weight: bold; font-size: 9.5pt; padding: 3px 8px; border-radius: 5px;").arg(color);
     if (m_lblFusionStatus->styleSheet() != style) m_lblFusionStatus->setStyleSheet(style);
     m_lblFusionDetail->setText(alertDetails.join(QStringLiteral(" | ")));
 
     const QString signature = QStringLiteral("%1|%2|%3|%4|%5|%6|%7|%8|%9")
-        .arg(state, severity).arg(lost).arg(tilted).arg(scaledLarger).arg(scaledSmaller)
-        .arg(displaced).arg(unavailable).arg(trackingLive);
+        .arg(state, severity).arg(lost).arg(tilted).arg(toppledCalib).arg(scaledLarger).arg(scaledSmaller)
+        .arg(displaced).arg(unavailable);
     if (signature != m_lastReportedSignature) {
-        const QString logEntry = alertDetails.isEmpty() ? text : QStringLiteral("%1 [%2]").arg(text, alertDetails.join(QStringLiteral(", ")));
-        appendLog(logEntry);
+        // 未标定但已在实时输出目标三态时，由 m_lastTargetStateSignature 负责记录状态变化，避免同一秒重复刷屏
+        if (!(state == QStringLiteral("uncalibrated") && statusActiveCount > 0)) {
+            const QString logEntry = alertDetails.isEmpty() ? text : QStringLiteral("%1 [%2]").arg(text, alertDetails.join(QStringLiteral(", ")));
+            appendLog(logEntry);
+        }
         m_lastReportedSignature = signature;
     }
 }
@@ -985,6 +1282,7 @@ void MainWindow::toggleChannel(int index)
         ui.baselineSet = false;
         ui.hasTarget = false;
         ui.trackingActive = false;
+        ui.lastTargetStatus = {};
         if (ui.panelBox) ui.panelBox->setTitle(tr("检测点 %1（ESP32 无线）").arg(index + 1));
         updateFusionDecision();
         return;
@@ -1014,6 +1312,7 @@ void MainWindow::openChannel(int index, const QUrl &url)
     ui.hasTarget = false;
     ui.trackingActive = false;
     ui.lastAnomaly = {};
+    ui.lastTargetStatus = {};
     ui.lastTargetCenter = QPointF();
     ui.lastDeltaX = 0.0;
     ui.lastDeltaY = 0.0;
@@ -1051,6 +1350,7 @@ void MainWindow::setChannelUnavailable(int index, const QString &reason)
     ui.baselineSet = false;
     ui.hasTarget = false;
     ui.trackingActive = false;
+    ui.lastTargetStatus = {};
     updateDiscoveryStatus();
     updateFusionDecision();
 }

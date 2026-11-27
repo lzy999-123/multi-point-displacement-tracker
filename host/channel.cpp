@@ -12,6 +12,29 @@ constexpr int kMaxPendingResults = 2;
 // 运动轨迹尾迹保留时长与最大点数（静止后自动淡出消失，保持画面清爽）
 constexpr qint64 kTrajectoryTtlMs = 850;
 constexpr int kTrajectoryMaxPoints = 16;
+// 滑动速度窗长与固定机位 ROI 像素变化参考刷新周期（区分真实位移与跟踪框原地微抖）
+constexpr qint64 kMotionWindowMs = 360;
+constexpr qint64 kMotionRefRefreshMs = 260;
+
+// 固定机位像素级变化率：统计目标外接框（含 8px 边缘）内发生明显灰度变化（>=22）的像素比例
+double computeRoiPixelChangeFrac(const cv::Mat &currGray, const cv::Mat &refGray, const cv::Rect &box)
+{
+    if (currGray.empty() || refGray.empty() || currGray.size() != refGray.size())
+        return 1.0;
+    const cv::Rect roi = cv::Rect(box.x - 8, box.y - 8, box.width + 16, box.height + 16)
+                         & cv::Rect(0, 0, currGray.cols, currGray.rows);
+    if (roi.width < 8 || roi.height < 8) return 1.0;
+    cv::Mat diff;
+    cv::absdiff(currGray(roi), refGray(roi), diff);
+    int changed = 0;
+    for (int r = 0; r < diff.rows; ++r) {
+        const uchar *row = diff.ptr<uchar>(r);
+        for (int c = 0; c < diff.cols; ++c) {
+            if (row[c] >= 22) ++changed;
+        }
+    }
+    return double(changed) / double(roi.area());
+}
 
 QImage toQImage(const cv::Mat &bgr)
 {
@@ -58,6 +81,13 @@ void ChannelWorker::init()
     connect(m_udpStream, &UdpStream::stateChanged, this, &ChannelWorker::stateChanged);
     connect(m_udpStream, &UdpStream::videoProfileApplied, this, &ChannelWorker::videoProfileApplied);
 
+    // 实时无线三路跟踪稳定性配置（借鉴 untitled7）：
+    // 跨视角联动连续 3 帧空间一致确认、丢失重捕 2 帧确认 + 140ms 搜索限频、启用稳框死区平滑与 400ms 状态防抖
+    m_autoDetector.setCrossViewConfirmFrames(3);
+    m_autoDetector.setLostRecoveryConfirmFrames(2);
+    m_autoDetector.setRecoveryThrottleMs(140);
+    m_autoDetector.setBoxSmoothingEnabled(true);
+    m_targetTracker.setConfirmMs(400);
 }
 
 void ChannelWorker::open(const QUrl &url)
@@ -92,6 +122,7 @@ void ChannelWorker::close()
     m_lastFrameAtMs = -1;
     m_baseline.reset();
     m_debouncer.reset();
+    m_targetTracker.reset();
     m_autoDetector.resetTracking();
     m_pendingSignatureBroadcast = false;
     m_hasTrackOrigin = false;
@@ -99,6 +130,9 @@ void ChannelWorker::close()
     m_hasPrevTrack = false;
     m_prevTrackMs = -1;
     m_smoothSpeed = 0.0;
+    m_motionWindow.clear();
+    m_motionRefGray.release();
+    m_motionRefMs = -1;
     m_timedTrajectory.clear();
     m_hasStillAnchor = false;
 }
@@ -119,6 +153,7 @@ void ChannelWorker::setDetectorMode(int mode)
     if (selected == m_mode) return;
     m_mode = selected;
     resetBaseline();
+    m_targetTracker.reset();
     m_autoDetector.resetTracking();
     m_lastDetection = Detection();
 }
@@ -134,13 +169,14 @@ void ChannelWorker::calibrateBaseline()
     }
     m_baseline.calibrate(m_lastDetection, m_lastFrame);
     m_debouncer.reset();
+    m_targetTracker.setReference(m_lastDetection);
     m_hasTrackOrigin = true;
     m_trackOrigin = QPointF(m_lastDetection.center.x, m_lastDetection.center.y);
     m_trackOriginArea = std::max(1.0, m_lastDetection.area);
     m_timedTrajectory.clear();
     m_hasStillAnchor = true;
     m_stillAnchor = m_trackOrigin;
-    emit calibrationFinished(m_revision, true, QStringLiteral("已锁定当前选定目标的基准并重置位移起点"));
+    emit calibrationFinished(m_revision, true, QStringLiteral("已锁定当前选定目标的基准并重置状态起点"));
 }
 
 void ChannelWorker::resetBaseline()
@@ -168,10 +204,12 @@ void ChannelWorker::setImageEnhance(bool enable)
 void ChannelWorker::pickTarget(int x, int y)
 {
     resetBaseline();
+    m_targetTracker.reset();
     m_lastDetection = Detection();
     m_hasTrackOrigin = false;
     m_hasPrevTrack = false;
     m_smoothSpeed = 0.0;
+    m_motionWindow.clear();
     m_timedTrajectory.clear();
     m_hasStillAnchor = false;
     if (m_mode == AutoContour) {
@@ -186,10 +224,12 @@ void ChannelWorker::pickTarget(int x, int y)
 void ChannelWorker::selectTargetRoi(const QRect &roi)
 {
     resetBaseline();
+    m_targetTracker.reset();
     m_lastDetection = Detection();
     m_hasTrackOrigin = false;
     m_hasPrevTrack = false;
     m_smoothSpeed = 0.0;
+    m_motionWindow.clear();
     m_timedTrajectory.clear();
     m_hasStillAnchor = false;
     if (m_mode == AutoContour) {
@@ -204,10 +244,12 @@ void ChannelWorker::selectTargetRoi(const QRect &roi)
 void ChannelWorker::syncTargetSignature(const TargetSignature &sig)
 {
     resetBaseline();
+    m_targetTracker.reset();
     m_lastDetection = Detection();
     m_hasTrackOrigin = false;
     m_hasPrevTrack = false;
     m_smoothSpeed = 0.0;
+    m_motionWindow.clear();
     m_timedTrajectory.clear();
     m_hasStillAnchor = false;
     m_pendingSignatureBroadcast = false;
@@ -219,12 +261,14 @@ void ChannelWorker::syncTargetSignature(const TargetSignature &sig)
 void ChannelWorker::clearTarget()
 {
     resetBaseline();
+    m_targetTracker.reset();
     m_autoDetector.resetTracking();
     m_pendingSignatureBroadcast = false;
     m_lastDetection = Detection();
     m_hasTrackOrigin = false;
     m_hasPrevTrack = false;
     m_smoothSpeed = 0.0;
+    m_motionWindow.clear();
     m_timedTrajectory.clear();
     m_hasStillAnchor = false;
 }
@@ -232,15 +276,18 @@ void ChannelWorker::clearTarget()
 void ChannelWorker::resetTrajectoryOrigin()
 {
     m_timedTrajectory.clear();
+    m_motionWindow.clear();
     m_smoothSpeed = 0.0;
     m_hasPrevTrack = false;
     if (m_lastDetection.valid && m_lastDetection.area > 0) {
+        m_targetTracker.setReference(m_lastDetection);
         m_hasTrackOrigin = true;
         m_trackOrigin = QPointF(m_lastDetection.center.x, m_lastDetection.center.y);
         m_trackOriginArea = std::max(1.0, m_lastDetection.area);
         m_hasStillAnchor = true;
         m_stillAnchor = m_trackOrigin;
     } else {
+        m_targetTracker.reset();
         m_hasTrackOrigin = false;
         m_hasStillAnchor = false;
     }
@@ -249,6 +296,7 @@ void ChannelWorker::resetTrajectoryOrigin()
 void ChannelWorker::pickColor(int x, int y)
 {
     resetBaseline();
+    m_targetTracker.reset();
     m_lastDetection = Detection();
     ColorParams params = m_blobDetector.params();
     if (ColorBlobDetector::pickColor(m_lastFrame, x, y, &params)) {
@@ -260,8 +308,10 @@ void ChannelWorker::pickColor(int x, int y)
 void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
 {
     const qint64 observedAt = monitorNowMs();
-    if (m_lastFrameAtMs < 0 || observedAt - m_lastFrameAtMs > kMonitorFreshnessMs)
+    if (m_lastFrameAtMs < 0 || observedAt - m_lastFrameAtMs > kMonitorFreshnessMs) {
         m_debouncer.reset(); // 断流期间不能累计“持续正常/异常”时间。
+        m_targetTracker.resetPendingTimers();
+    }
     m_lastFrameAtMs = observedAt;
     m_lastFrame = bgr;
 
@@ -307,6 +357,7 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
         m_timedTrajectory.removeFirst();
     }
 
+    double windowNetDisp = 0.0;
     if (!result.detections.isEmpty()) {
         m_lastDetection = result.detections.first();
         const cv::Point2d c = m_lastDetection.center;
@@ -315,6 +366,44 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
         result.targetCenter = pt;
         result.offsetX = int(std::lround(c.x - bgr.cols / 2.0));
         result.offsetY = int(std::lround(c.y - bgr.rows / 2.0));
+
+        // 维护 360ms 滑动位置窗：原地往返抖动的净位移接近 0，真实持续移动才会累积净位移
+        m_motionWindow.append({pt, observedAt});
+        while (m_motionWindow.size() > 2
+               && (observedAt < m_motionWindow.first().second
+                   || observedAt - m_motionWindow.first().second > kMotionWindowMs)) {
+            m_motionWindow.removeFirst();
+        }
+        double windowSpeed = 0.0;
+        if (m_motionWindow.size() >= 2) {
+            const qint64 spanMs = observedAt - m_motionWindow.first().second;
+            if (spanMs >= 100 && spanMs <= 1000) {
+                windowNetDisp = std::hypot(pt.x() - m_motionWindow.first().first.x(),
+                                           pt.y() - m_motionWindow.first().first.y());
+                windowSpeed = windowNetDisp * 1000.0 / double(spanMs);
+            }
+        }
+
+        // 固定机位 ROI 像素变化核验：若目标区域内真实画面几乎没有像素变化（<2.5%），
+        // 说明物体物理静止、只是检测框微抖，直接归零运动速度与净位移
+        cv::Mat currGray;
+        cv::cvtColor(bgr, currGray, cv::COLOR_BGR2GRAY);
+        cv::GaussianBlur(currGray, currGray, cv::Size(5, 5), 0);
+        if (!m_motionRefGray.empty() && m_motionRefGray.size() == currGray.size()
+            && m_motionRefMs >= 0 && observedAt >= m_motionRefMs
+            && observedAt - m_motionRefMs <= 900) {
+            const double changedFrac = computeRoiPixelChangeFrac(currGray, m_motionRefGray, m_lastDetection.box);
+            if (changedFrac < 0.025 && windowNetDisp < 18.0) {
+                windowNetDisp = 0.0;
+                windowSpeed = 0.0;
+            }
+        }
+        if (m_motionRefGray.empty() || m_motionRefGray.size() != currGray.size()
+            || m_motionRefMs < 0 || observedAt < m_motionRefMs
+            || observedAt - m_motionRefMs >= kMotionRefRefreshMs) {
+            m_motionRefGray = currGray;
+            m_motionRefMs = observedAt;
+        }
 
         if (!m_hasTrackOrigin) {
             m_hasTrackOrigin = true;
@@ -327,7 +416,7 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
             const QPointF refPt = m_timedTrajectory.isEmpty()
                 ? (m_hasStillAnchor ? m_stillAnchor : pt)
                 : m_timedTrajectory.last().first;
-            if (std::hypot(pt.x() - refPt.x(), pt.y() - refPt.y()) >= 3.0) {
+            if (windowNetDisp >= 6.0 && std::hypot(pt.x() - refPt.x(), pt.y() - refPt.y()) >= 4.0) {
                 if (m_timedTrajectory.isEmpty() && m_hasStillAnchor) {
                     m_timedTrajectory.append({m_stillAnchor, observedAt - 40});
                 }
@@ -343,14 +432,8 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
         result.displacement = std::hypot(result.deltaX, result.deltaY);
         result.scaleRatio = m_lastDetection.area / std::max(1.0, m_trackOriginArea);
 
-        if (m_hasPrevTrack && observedAt > m_prevTrackMs && observedAt - m_prevTrackMs <= 1000) {
-            const double dt = double(observedAt - m_prevTrackMs) / 1000.0;
-            const double instSpeed = std::hypot(pt.x() - m_prevTrackCenter.x(),
-                                                pt.y() - m_prevTrackCenter.y()) / dt;
-            m_smoothSpeed = 0.65 * m_smoothSpeed + 0.35 * instSpeed;
-        } else {
-            m_smoothSpeed = 0.0;
-        }
+        m_smoothSpeed = (windowSpeed <= 1e-3) ? (0.40 * m_smoothSpeed) : (0.55 * m_smoothSpeed + 0.45 * windowSpeed);
+        if (m_smoothSpeed < 2.0) m_smoothSpeed = 0.0;
         m_hasPrevTrack = true;
         m_prevTrackCenter = pt;
         m_prevTrackMs = observedAt;
@@ -363,11 +446,18 @@ void ChannelWorker::onFrame(const cv::Mat &bgr, quint64 seq, qint64 receivedMs)
         m_hasPrevTrack = false;
         m_hasStillAnchor = false;
         m_smoothSpeed = 0.0;
+        m_motionWindow.clear();
     }
     if (m_timedTrajectory.size() >= 2) {
         result.trajectory.reserve(m_timedTrajectory.size());
         for (const auto &entry : m_timedTrajectory)
             result.trajectory.append(entry.first);
+    }
+
+    // 目标实时综合状态：锁定目标后立即自动输出（是否移动过 / 变大变小 / 是否倾倒）
+    if (result.trackingActive || m_targetTracker.hasReference()) {
+        result.targetStatus = m_targetTracker.update(m_lastDetection, m_thresholds, observedAt,
+                                                     result.speedPxPerSec, windowNetDisp);
     }
 
     // 藏品监测：比对基准计算偏差
@@ -400,6 +490,7 @@ Channel::Channel(int id, QObject *parent)
     qRegisterMetaType<TargetSignature>();
     qRegisterMetaType<MonitorThresholds>();
     qRegisterMetaType<AnomalyMetrics>();
+    qRegisterMetaType<TargetStatus>();
     qRegisterMetaType<MjpegStream::State>();
 
     m_worker = new ChannelWorker(m_pending);

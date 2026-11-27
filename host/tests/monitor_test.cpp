@@ -14,6 +14,7 @@
 #include "mainwindow.h"
 #include "videowidget.h"
 #include "videoprofile.h"
+#include "yolodetector.h"
 
 namespace {
 cv::Mat scene(bool target = true, bool background = true, int offset = 0)
@@ -629,6 +630,432 @@ private slots:
         QCOMPARE(statusLabel->property("monitorState").toString(), QStringLiteral("changed"));
         QCOMPARE(statusLabel->property("monitorSeverity").toString(), QStringLiteral("confirmed"));
         QVERIFY(statusLabel->text().contains(QStringLiteral("空间移动")));
+    }
+    void targetStateTrackerReportsEverMovedScaleAndTopple() {
+        auto makeDet = [](double cx, double cy, int w, int h, double area, double angle, bool angleOk) {
+            Detection d;
+            d.valid = true;
+            d.center = cv::Point2d(cx, cy);
+            d.box = cv::Rect(int(std::lround(cx - w * 0.5)), int(std::lround(cy - h * 0.5)), w, h);
+            d.area = area;
+            d.aspectRatio = double(h) / std::max(1, w);
+            d.angle = angle;
+            d.angleReliable = angleOk;
+            return d;
+        };
+
+        TargetStateTracker tracker(200);
+        const MonitorThresholds th;
+        const Detection base = makeDet(200, 240, 50, 140, 7000.0, 90.0, true);
+
+        // 1. 首次捕获自动建立参考：静止、正常、未倾倒
+        auto st = tracker.update(base, th, 1000);
+        QVERIFY(st.active && st.visible);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Stationary);
+        QCOMPARE(st.size, TargetStatus::SizeState::Normal);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Normal);
+        QVERIFY(!st.hasEverMoved);
+        QVERIFY(!st.hasEverToppled);
+
+        // 2. 短暂 100ms 抖动不应误触发“曾移动过”
+        const Detection moved = makeDet(245, 240, 50, 140, 7000.0, 90.0, true);
+        st = tracker.update(moved, th, 1050);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Stationary);
+        QVERIFY(!st.hasEverMoved);
+        st = tracker.update(base, th, 1150);
+        QVERIFY(!st.hasEverMoved);
+
+        // 3. 持续移位 >= 200ms：进入已移动并记录 hasEverMoved
+        tracker.update(moved, th, 1200);
+        st = tracker.update(moved, th, 1450);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Displaced);
+        QVERIFY(st.hasEverMoved);
+        QVERIFY(st.maxDisplacement >= 44.0);
+        QVERIFY(st.motionText.contains(QStringLiteral("已移动")));
+
+        // 4. 移回原位持续 >= 200ms：输出“曾移动过(已回位)”
+        tracker.update(base, th, 1500);
+        st = tracker.update(base, th, 1750);
+        QCOMPARE(st.motion, TargetStatus::MotionState::MovedReturned);
+        QVERIFY(st.hasEverMoved);
+        QVERIFY(st.motionText.contains(QStringLiteral("曾移动过")));
+        QVERIFY(st.shortTag.contains(QStringLiteral("曾移动过")));
+
+        // 5. 变大与变小
+        const Detection larger = makeDet(200, 240, 62, 174, 10500.0, 90.0, true);
+        tracker.update(larger, th, 1800);
+        st = tracker.update(larger, th, 2050);
+        QCOMPARE(st.size, TargetStatus::SizeState::Larger);
+        QVERIFY(st.sizeText.contains(QStringLiteral("变大")));
+
+        const Detection smaller = makeDet(200, 240, 38, 106, 4200.0, 90.0, true);
+        tracker.update(smaller, th, 2100);
+        st = tracker.update(smaller, th, 2350);
+        QCOMPARE(st.size, TargetStatus::SizeState::Smaller);
+        QVERIFY(st.sizeText.contains(QStringLiteral("变小")));
+        // 纯等比缩小不能误报倾倒
+        QCOMPARE(st.posture, TargetStatus::PostureState::Normal);
+
+        // 6. 轻微倾斜 16° -> Tilted；大幅倾倒 84° + 移位 + 变大 -> 多维度并行输出
+        const Detection tilted = makeDet(200, 240, 72, 136, 7000.0, 74.0, true);
+        tracker.update(tilted, th, 2400);
+        st = tracker.update(tilted, th, 2650);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Tilted);
+        QVERIFY(!st.hasEverToppled);
+
+        const Detection compoundTopple = makeDet(260, 240, 165, 58, 9600.0, 6.0, true);
+        tracker.update(compoundTopple, th, 2700);
+        st = tracker.update(compoundTopple, th, 2950);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Displaced);
+        QCOMPARE(st.size, TargetStatus::SizeState::Larger);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Toppled);
+        QVERIFY(st.hasEverToppled);
+        QVERIFY(st.shortTag.contains(QStringLiteral("已倾倒")));
+        QVERIFY(st.shortTag.contains(QStringLiteral("变大")));
+        QVERIFY(st.shortTag.contains(QStringLiteral("已移动")));
+
+        // 7. 朝向镜头倒下（高度塌陷而宽度不变、无可靠主轴角）也应判定倾倒
+        tracker.setReference(base);
+        QVERIFY(!tracker.update(base, th, 3000).hasEverMoved);
+        const Detection foreshortened = makeDet(200, 240, 52, 68, 3536.0, 0.0, false);
+        tracker.update(foreshortened, th, 3050);
+        st = tracker.update(foreshortened, th, 3300);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Toppled);
+        QVERIFY(st.toppledByAspect);
+    }
+    void labeledBottleAndGrayBoxTopple90DegTracking() {
+        auto drawRotatedBottle = [](cv::Mat &img, int cx, int cy, double angleDeg,
+                                    const cv::Scalar &body, const cv::Scalar &cap) {
+            auto fillRelRect = [&](float rx, float ry, float rw, float rh, const cv::Scalar &color) {
+                const double rad = angleDeg * 3.14159265358979323846 / 180.0;
+                const double ca = std::cos(rad), sa = std::sin(rad);
+                const float gx = float(cx + rx * ca - ry * sa);
+                const float gy = float(cy + rx * sa + ry * ca);
+                cv::RotatedRect rr(cv::Point2f(gx, gy), cv::Size2f(rw, rh), float(angleDeg));
+                cv::Point2f pts[4];
+                rr.points(pts);
+                std::vector<cv::Point> poly;
+                for (auto p : pts) poly.emplace_back(cvRound(p.x), cvRound(p.y));
+                cv::fillConvexPoly(img, poly, color);
+            };
+            fillRelRect(0.0f, 6.0f, 48.0f, 96.0f, body);
+            fillRelRect(0.0f, -51.0f, 24.0f, 22.0f, body);
+            fillRelRect(0.0f, -66.0f, 28.0f, 12.0f, cap);
+            fillRelRect(0.0f, 5.0f, 44.0f, 22.0f, cv::Scalar(235, 240, 242)); // 中间白标签
+        };
+        auto makeScene = [&](int yx, int yy, double angleDeg) {
+            cv::Mat img(480, 640, CV_8UC3, cv::Scalar(120, 122, 125));
+            drawRotatedBottle(img, 520, 260, 0.0, cv::Scalar(210, 115, 30), cv::Scalar(195, 95, 20));
+            drawRotatedBottle(img, yx, yy, angleDeg, cv::Scalar(25, 205, 235), cv::Scalar(20, 185, 220));
+            return img;
+        };
+
+        AutoContourDetector detector;
+        TargetStateTracker tracker(0);
+        const MonitorThresholds th;
+
+        // 1. 立放黄瓶
+        detector.selectRoi(cv::Rect(148, 174, 64, 152));
+        const auto d0 = detector.detect(makeScene(180, 250, 0.0));
+        QCOMPARE(d0.size(), 1);
+        auto st = tracker.update(d0.first(), th, 0);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Normal);
+
+        // 2. 倾斜 20°
+        const auto dTilt = detector.detect(makeScene(180, 250, 20.0));
+        QCOMPARE(dTilt.size(), 1);
+        st = tracker.update(dTilt.first(), th, 300);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Tilted);
+
+        // 3. 完全倾倒 90° 横躺在桌面
+        const auto dFall = detector.detect(makeScene(190, 275, 90.0));
+        QCOMPARE(dFall.size(), 1);
+        st = tracker.update(dFall.first(), th, 600);
+        QVERIFY2(st.posture == TargetStatus::PostureState::Toppled,
+                 qPrintable(QString("expected Toppled got deltaAngle=%1 w=%2 h=%3")
+                                .arg(st.deltaAngle).arg(dFall.first().box.width).arg(dFall.first().box.height)));
+        QVERIFY(st.hasEverToppled);
+
+        // 4. 倾倒后继续横向移动
+        const auto dFallMove = detector.detect(makeScene(290, 275, 90.0));
+        QCOMPARE(dFallMove.size(), 1);
+        st = tracker.update(dFallMove.first(), th, 900);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Toppled);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Displaced);
+        QVERIFY(st.hasEverMoved);
+
+        // 5. 扶正放回原位 -> 姿态恢复正常，但保留“曾移动过”
+        const auto dRestored = detector.detect(makeScene(180, 250, 0.0));
+        QCOMPARE(dRestored.size(), 1);
+        st = tracker.update(dRestored.first(), th, 1200);
+        QCOMPARE(st.posture, TargetStatus::PostureState::Normal);
+        QCOMPARE(st.motion, TargetStatus::MotionState::MovedReturned);
+
+        // 6. 非彩色灰阶立柱倾倒 90° 也能可靠跟住并报倾倒
+        auto makeGrayScene = [](bool fallen) {
+            cv::Mat img(480, 640, CV_8UC3, cv::Scalar(48, 50, 52));
+            if (!fallen) {
+                cv::rectangle(img, cv::Rect(170, 170, 56, 140), cv::Scalar(205, 205, 205), -1);
+                cv::rectangle(img, cv::Rect(184, 195, 28, 85), cv::Scalar(120, 120, 120), -1);
+            } else {
+                cv::rectangle(img, cv::Rect(130, 212, 140, 56), cv::Scalar(205, 205, 205), -1);
+                cv::rectangle(img, cv::Rect(155, 226, 85, 28), cv::Scalar(120, 120, 120), -1);
+            }
+            return img;
+        };
+        AutoContourDetector grayDet;
+        TargetStateTracker grayTracker(0);
+        grayDet.selectRoi(cv::Rect(162, 162, 72, 156));
+        const auto g0 = grayDet.detect(makeGrayScene(false));
+        QCOMPARE(g0.size(), 1);
+        grayTracker.update(g0.first(), th, 0);
+        const auto gFall = grayDet.detect(makeGrayScene(true));
+        QCOMPARE(gFall.size(), 1);
+        const auto gSt = grayTracker.update(gFall.first(), th, 300);
+        QCOMPARE(gSt.posture, TargetStatus::PostureState::Toppled);
+    }
+    void uiDisplaysLiveTargetStateWithoutCalibration() {
+        QTemporaryDir directory;
+        MainWindow window(nullptr, directory.filePath("camera.ini"));
+        prepare(window);
+        const auto channels = window.findChildren<Channel *>();
+
+        auto makeTrackedFrame = [&](Channel *ch, const TargetStatus &ts) {
+            auto r = normal(ch);
+            r.baselineCalibrated = false;
+            r.trackingActive = true;
+            r.anomaly.type = AnomalyType::Uncalibrated;
+            r.targetStatus = ts;
+            return r;
+        };
+
+        auto *motionLbl = window.findChild<QLabel *>("state-motion");
+        auto *sizeLbl = window.findChild<QLabel *>("state-size");
+        auto *postureLbl = window.findChild<QLabel *>("state-posture");
+        auto *banner = window.findChild<QLabel *>("fusion-status");
+        QVERIFY(motionLbl && sizeLbl && postureLbl && banner);
+
+        // 1. 刚框选锁定（未手动标定基准）：立即输出 静止 / 正常 / 未倾倒
+        TargetStatus stStill;
+        stStill.active = true;
+        stStill.visible = true;
+        stStill.motion = TargetStatus::MotionState::Stationary;
+        stStill.size = TargetStatus::SizeState::Normal;
+        stStill.posture = TargetStatus::PostureState::Normal;
+        stStill.motionText = QStringLiteral("未移动");
+        stStill.sizeText = QStringLiteral("尺寸正常(100%)");
+        stStill.postureText = QStringLiteral("未倾倒");
+        stStill.summaryText = QStringLiteral("未移动 · 尺寸正常(100%) · 未倾倒");
+        stStill.shortTag = QStringLiteral("未移动 · 正常");
+        for (auto *ch : channels) {
+            ch->stateChanged(MjpegStream::State::Streaming, QStringLiteral("test"));
+            ch->resultReady(makeTrackedFrame(ch, stStill));
+        }
+        QCOMPARE(motionLbl->property("monitorValue").toString(), QStringLiteral("stationary"));
+        QCOMPARE(sizeLbl->property("monitorValue").toString(), QStringLiteral("normal"));
+        QCOMPARE(postureLbl->property("monitorValue").toString(), QStringLiteral("normal"));
+        QCOMPARE(banner->property("monitorState").toString(), QStringLiteral("uncalibrated"));
+        QVERIFY(banner->text().contains(QStringLiteral("未移动")));
+
+        // 2. 目标已移动 + 变大
+        TargetStatus stMoveGrow = stStill;
+        stMoveGrow.motion = TargetStatus::MotionState::Displaced;
+        stMoveGrow.currentlyDisplaced = true;
+        stMoveGrow.hasEverMoved = true;
+        stMoveGrow.displacement = 38.0;
+        stMoveGrow.maxDisplacement = 38.0;
+        stMoveGrow.size = TargetStatus::SizeState::Larger;
+        stMoveGrow.scaleRatio = 1.28;
+        stMoveGrow.sizeChangePct = 28.0;
+        stMoveGrow.summaryText = QStringLiteral("已移动 Δ38px · 变大 +28% · 未倾倒");
+        stMoveGrow.shortTag = QStringLiteral("变大 +28% · 已移动 Δ38px");
+        channels[0]->resultReady(makeTrackedFrame(channels[0], stMoveGrow));
+        QCOMPARE(motionLbl->property("monitorValue").toString(), QStringLiteral("displaced"));
+        QCOMPARE(sizeLbl->property("monitorValue").toString(), QStringLiteral("larger"));
+        QVERIFY(sizeLbl->text().contains(QStringLiteral("变大")));
+
+        // 3. 移回原位但已倾倒 -> 同时显示“曾移动过(已回位)”和“已倾倒”
+        TargetStatus stReturnedToppled = stStill;
+        stReturnedToppled.motion = TargetStatus::MotionState::MovedReturned;
+        stReturnedToppled.hasEverMoved = true;
+        stReturnedToppled.maxDisplacement = 38.0;
+        stReturnedToppled.posture = TargetStatus::PostureState::Toppled;
+        stReturnedToppled.hasEverToppled = true;
+        stReturnedToppled.angleReliable = true;
+        stReturnedToppled.deltaAngle = 82.0;
+        stReturnedToppled.summaryText = QStringLiteral("曾移动过(最大38px,已回位) · 尺寸正常(100%) · 已倾倒(82°)");
+        stReturnedToppled.shortTag = QStringLiteral("已倾倒 82° · 曾移动过(已回位)");
+        channels[0]->resultReady(makeTrackedFrame(channels[0], stReturnedToppled));
+        QCOMPARE(motionLbl->property("monitorValue").toString(), QStringLiteral("moved_returned"));
+        QCOMPARE(postureLbl->property("monitorValue").toString(), QStringLiteral("toppled"));
+        QVERIFY(motionLbl->text().contains(QStringLiteral("曾移动过")));
+        QVERIFY(postureLbl->text().contains(QStringLiteral("已倾倒")));
+    }
+    void antiInterferenceRejectsTinyYellowStickerAndRequiresConfirmation() {
+        auto drawYellowBottle = [](cv::Mat &img, int cx, int cy) {
+            cv::rectangle(img, cv::Rect(cx - 28, cy - 60, 56, 130), cv::Scalar(25, 205, 235), -1);
+            cv::rectangle(img, cv::Rect(cx - 14, cy - 82, 28, 24), cv::Scalar(25, 205, 235), -1);
+            cv::rectangle(img, cv::Rect(cx - 15, cy - 92, 30, 12), cv::Scalar(20, 185, 220), -1);
+            cv::rectangle(img, cv::Rect(cx - 26, cy - 12, 52, 34), cv::Scalar(225, 236, 225), -1);
+            cv::line(img, cv::Point(cx - 16, cy + 4), cv::Point(cx + 16, cy + 4), cv::Scalar(40, 110, 40), 3);
+        };
+        cv::Mat cam2(480, 640, CV_8UC3, cv::Scalar(125, 128, 130));
+        drawYellowBottle(cam2, 320, 260);
+
+        AutoContourDetector srcDet;
+        srcDet.setYoloEnabled(false); // 专门验证纯视觉多特征下也能拒绝对角微小黄色干扰贴纸
+        srcDet.selectRoi(cv::Rect(286, 162, 68, 174));
+        const auto dSrc = srcDet.detect(cam2);
+        QCOMPARE(dSrc.size(), 1);
+        const TargetSignature sig = srcDet.exportSignature(cam2);
+        QVERIFY(sig.valid);
+
+        // 模拟检测点 1：灰白金属柜 + 画面最左侧边缘一个 26x26 黄色小标签（无瓶子）
+        cv::Mat cam1Cabinet(480, 640, CV_8UC3, cv::Scalar(185, 188, 190));
+        cv::rectangle(cam1Cabinet, cv::Rect(20, 110, 220, 290), cv::Scalar(172, 176, 178), 2);
+        cv::rectangle(cam1Cabinet, cv::Rect(260, 110, 320, 290), cv::Scalar(168, 172, 175), 2);
+        cv::rectangle(cam1Cabinet, cv::Rect(4, 240, 26, 26), cv::Scalar(20, 190, 235), -1);
+
+        AutoContourDetector peerDet;
+        peerDet.setYoloEnabled(false);
+        peerDet.setCrossViewConfirmFrames(3);
+        peerDet.adoptSignature(sig);
+        for (int i = 0; i < 6; ++i) {
+            const auto res = peerDet.detect(cam1Cabinet);
+            QVERIFY2(res.isEmpty(), "Must not lock onto tiny yellow sticker on cabinet!");
+        }
+
+        // 模拟 1~2 帧瞬时闪现干扰：未达 3 帧连续确认前绝不能抢锁
+        cv::Mat cam1WithBottle = cam1Cabinet.clone();
+        drawYellowBottle(cam1WithBottle, 380, 260);
+        QVERIFY(peerDet.detect(cam1WithBottle).isEmpty()); // 第 1 帧候选
+        QVERIFY(peerDet.detect(cam1WithBottle).isEmpty()); // 第 2 帧候选
+        QVERIFY(peerDet.detect(cam1Cabinet).isEmpty());    // 中断复位
+
+        // 真正目标连续出现 3 帧 -> 稳定锁定
+        QVERIFY(peerDet.detect(cam1WithBottle).isEmpty());
+        QVERIFY(peerDet.detect(cam1WithBottle).isEmpty());
+        const auto locked = peerDet.detect(cam1WithBottle);
+        QCOMPARE(locked.size(), 1);
+        QVERIFY(std::abs(locked.first().center.x - 380.0) < 18.0);
+    }
+    void boxSmoothingPreventsFalseShrinkageUnderGlare() {
+        auto drawGlareBottle = [](cv::Mat &img, int cx, int cy, int glareW, int glareH) {
+            cv::rectangle(img, cv::Rect(cx - 28, cy - 60, 56, 130), cv::Scalar(25, 205, 235), -1);
+            cv::rectangle(img, cv::Rect(cx - 14, cy - 82, 28, 24), cv::Scalar(25, 205, 235), -1);
+            cv::rectangle(img, cv::Rect(cx - 15, cy - 92, 30, 12), cv::Scalar(20, 185, 220), -1);
+            cv::rectangle(img, cv::Rect(cx - 26, cy - 12, 52, 34), cv::Scalar(230, 238, 232), -1);
+            if (glareW > 0 && glareH > 0) {
+                // 模拟瓶身强反光/阴影洗白局部色块（瓶子本身尺寸未变）
+                cv::rectangle(img, cv::Rect(cx - glareW / 2, cy - 58, glareW, glareH),
+                              cv::Scalar(235, 238, 240), -1);
+            }
+        };
+
+        cv::Mat base(480, 640, CV_8UC3, cv::Scalar(125, 128, 130));
+        drawGlareBottle(base, 300, 250, 0, 0);
+
+        AutoContourDetector det;
+        det.setYoloEnabled(false);
+        det.setBoxSmoothingEnabled(true);
+        det.selectRoi(cv::Rect(268, 154, 64, 174));
+        const auto d0 = det.detect(base);
+        QCOMPARE(d0.size(), 1);
+
+        TargetStateTracker tracker(0);
+        const MonitorThresholds th;
+        tracker.update(d0.first(), th, 0);
+
+        for (int i = 1; i <= 10; ++i) {
+            cv::Mat frame(480, 640, CV_8UC3, cv::Scalar(125, 128, 130));
+            // 交替加入瓶身上半截反光，测试锁定框不发生“局部截断缩框棘轮”
+            drawGlareBottle(frame, 300, 250, (i % 2 == 0) ? 46 : 0, (i % 2 == 0) ? 44 : 0);
+            const auto tracked = det.detect(frame);
+            QCOMPARE(tracked.size(), 1);
+            const auto st = tracker.update(tracked.first(), th, i * 100);
+            QVERIFY2(st.scaleRatio >= 0.86 && st.scaleRatio <= 1.15,
+                     qPrintable(QString("frame %1 unexpected scaleRatio=%2 (box %3x%4)")
+                                    .arg(i).arg(st.scaleRatio)
+                                    .arg(tracked.first().box.width).arg(tracked.first().box.height)));
+            QCOMPARE(st.size, TargetStatus::SizeState::Normal);
+        }
+    }
+    void yoloDetectorLoadsAndRejectsCabinetInterference() {
+        auto &yolo = YoloDetector::instance();
+        if (!yolo.ensureLoaded()) {
+            QSKIP("YOLO26n model or ONNX Runtime not available in this environment");
+        }
+        QVERIFY(yolo.isReady());
+        QCOMPARE(YoloDetector::chineseClassName(39), QStringLiteral("瓶子"));
+
+        // 模拟金属柜 + 黄色小标签背景：正立与 90° 旋转都不应误检出任何瓶子
+        cv::Mat cabinet(480, 640, CV_8UC3, cv::Scalar(185, 188, 190));
+        cv::rectangle(cabinet, cv::Rect(20, 110, 220, 290), cv::Scalar(170, 174, 176), 2);
+        cv::rectangle(cabinet, cv::Rect(4, 240, 26, 26), cv::Scalar(20, 190, 235), -1);
+        const auto dets = yolo.detect(cabinet, 39, true);
+        int bottleCount = 0;
+        for (const auto &b : dets) {
+            if (b.classId == 39) ++bottleCount;
+        }
+        QCOMPARE(bottleCount, 0);
+    }
+    void stationaryBoxJitterDoesNotReportMoving() {
+        // 1. 测试 TargetStateTracker：目标已移位 95px 后静止，即使高频框抖动产生 30px/s 瞬时速度但净位移仅 3px，也绝不跳变为“正在移动”
+        auto makeDet = [](double cx, double cy) {
+            Detection d;
+            d.valid = true;
+            d.center = cv::Point2d(cx, cy);
+            d.box = cv::Rect(int(std::lround(cx - 35)), int(std::lround(cy - 95)), 70, 190);
+            d.area = 70.0 * 190.0;
+            d.aspectRatio = 190.0 / 70.0;
+            d.angle = 90.0;
+            d.angleReliable = true;
+            return d;
+        };
+        TargetStateTracker tracker(400);
+        const MonitorThresholds th;
+        tracker.update(makeDet(200, 250), th, 0, 0.0, 0.0);
+        // 先真实移位 95px 并稳定停住
+        tracker.update(makeDet(295, 250), th, 100, 0.0, 0.0);
+        auto st = tracker.update(makeDet(295, 250), th, 550, 0.0, 0.0);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Displaced);
+        QVERIFY(!st.currentlyMoving);
+
+        // 模拟每 50ms 来回微抖 ±3px（高瞬时速度但窗口净位移很小），绝不误报“正在移动”
+        for (int i = 1; i <= 12; ++i) {
+            const double jitterX = (i % 2 == 0) ? 298.0 : 293.0;
+            st = tracker.update(makeDet(jitterX, 250), th, 550 + i * 50, 32.0, 3.5);
+            QCOMPARE(st.motion, TargetStatus::MotionState::Displaced);
+            QVERIFY(!st.currentlyMoving);
+        }
+
+        // 真实持续移动（窗口净位移 >= 8px 且速度 >= 24px/s 持续 >= 220ms）才切入“正在移动”
+        tracker.update(makeDet(315, 250), th, 1300, 48.0, 16.0);
+        st = tracker.update(makeDet(330, 250), th, 1550, 52.0, 22.0);
+        QCOMPARE(st.motion, TargetStatus::MotionState::Moving);
+        QVERIFY(st.currentlyMoving);
+
+        // 2. 测试 AutoContourDetector 的位置死区：静止目标加入 ±2px 画面微扰时，输出框中心锁死不乱晃
+        auto drawBottle = [](int cx, int cy) {
+            cv::Mat img(480, 640, CV_8UC3, cv::Scalar(125, 128, 130));
+            cv::rectangle(img, cv::Rect(cx - 28, cy - 80, 56, 160), cv::Scalar(25, 205, 235), -1);
+            cv::rectangle(img, cv::Rect(cx - 24, cy - 16, 48, 32), cv::Scalar(230, 238, 232), -1);
+            return img;
+        };
+        AutoContourDetector det;
+        det.setYoloEnabled(false);
+        det.setBoxSmoothingEnabled(true);
+        det.selectRoi(cv::Rect(288, 166, 64, 168));
+        const auto d0 = det.detect(drawBottle(320, 250));
+        QCOMPARE(d0.size(), 1);
+        const cv::Point2d c0 = d0.first().center;
+        for (int i = 0; i < 8; ++i) {
+            const auto d = det.detect(drawBottle(320 + ((i % 2 == 0) ? 2 : -2), 250));
+            QCOMPARE(d.size(), 1);
+            QVERIFY2(cv::norm(d.first().center - c0) <= 2.5,
+                     qPrintable(QString("expected frozen center near (%1,%2) got (%3,%4)")
+                                    .arg(c0.x).arg(c0.y).arg(d.first().center.x).arg(d.first().center.y)));
+        }
     }
 };
 
