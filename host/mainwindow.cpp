@@ -20,8 +20,9 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QStatusBar>
-#include <QTabWidget>
+#include <QTabBar>
 #include <QToolBar>
 #include <QVBoxLayout>
 
@@ -101,11 +102,6 @@ MainWindow::MainWindow(QWidget *parent, const QString &settingsPath)
                           : tr("已切换为三路独立框选模式"));
     });
     toolbar->addWidget(m_chkCrossViewSync);
-
-    auto *btnClearAll = new QPushButton(tr("清除全部"), this);
-    btnClearAll->setToolTip(tr("一键清除所有检测点的锁定目标与运动轨迹"));
-    connect(btnClearAll, &QPushButton::clicked, this, &MainWindow::clearAllTargets);
-    toolbar->addWidget(btnClearAll);
 
     connect(m_discoveryButton, &QPushButton::clicked, this, [this] {
         if (m_discovery.isRunning()) {
@@ -385,11 +381,32 @@ QWidget *MainWindow::buildMonitorDashboard()
     rootLayout->setContentsMargins(6, 4, 6, 6);
     rootLayout->setSpacing(4);
 
-    auto *tabs = new QTabWidget(box);
-    rootLayout->addWidget(tabs);
+    auto *tabHeader = new QHBoxLayout;
+    tabHeader->setContentsMargins(0, 0, 0, 0);
+    tabHeader->setSpacing(6);
+    auto *tabBar = new QTabBar(box);
+    tabBar->setExpanding(false);
+    tabBar->setDrawBase(false);
+    tabBar->addTab(tr("实时跟踪与监控"));
+    tabBar->addTab(tr("参数设置"));
+    auto *btnClearAll = new QPushButton(tr("清除全部"), box);
+    btnClearAll->setObjectName(QStringLiteral("clear-all-targets"));
+    btnClearAll->setToolTip(tr("一键清除所有检测点的锁定目标、状态记录与运动轨迹"));
+    btnClearAll->setFixedHeight(24);
+    btnClearAll->setStyleSheet(QStringLiteral("padding: 2px 12px; font-size: 8.5pt;"));
+    connect(btnClearAll, &QPushButton::clicked, this, &MainWindow::clearAllTargets);
+    tabHeader->addWidget(tabBar);
+    tabHeader->addStretch(1);
+    tabHeader->addWidget(btnClearAll);
+    rootLayout->addLayout(tabHeader);
+
+    auto *pages = new QStackedWidget(box);
+    pages->setStyleSheet(QStringLiteral("QStackedWidget { background: #ffffff; border: 1px solid #d8dee6; border-radius: 4px; }"));
+    rootLayout->addWidget(pages, 1);
+    connect(tabBar, &QTabBar::currentChanged, pages, &QStackedWidget::setCurrentIndex);
 
     // ==================== 标签 1：实时跟踪与监控（主视窗） ====================
-    auto *monitorTab = new QWidget(tabs);
+    auto *monitorTab = new QWidget(pages);
     auto *monLayout = new QVBoxLayout(monitorTab);
     monLayout->setContentsMargins(6, 6, 6, 6);
     monLayout->setSpacing(6);
@@ -502,10 +519,10 @@ QWidget *MainWindow::buildMonitorDashboard()
         "background-color: #1c2026; color: #cfd8dc; font-family: Consolas, 'Microsoft YaHei UI', monospace; font-size: 8.5pt; border-radius: 4px;"));
     monLayout->addWidget(m_txtEventLog, 1);
 
-    tabs->addTab(monitorTab, tr("实时跟踪与监控"));
+    pages->addWidget(monitorTab);
 
     // ==================== 标签 2：参数设置（收起不占视线） ====================
-    auto *settingsTab = new QWidget(tabs);
+    auto *settingsTab = new QWidget(pages);
     auto *setLayout = new QVBoxLayout(settingsTab);
     setLayout->setContentsMargins(10, 8, 10, 8);
     setLayout->setSpacing(6);
@@ -537,19 +554,8 @@ QWidget *MainWindow::buildMonitorDashboard()
     m_spinDispThresh->setValue(m_thresholds.dispThresh);
     m_spinDispThresh->setSuffix(tr(" px"));
 
-    m_spinMinArea = new QSpinBox(settingsTab);
-    m_spinMinArea->setRange(50, 100000);
-    m_spinMinArea->setSingleStep(50);
-    m_spinMinArea->setValue(300);
-    m_spinMinArea->setSuffix(tr(" 像素"));
-
-    m_comboMode = new QComboBox(settingsTab);
-    m_comboMode->addItem(tr("CSRT 多特征跟踪（推荐：框选即跟、防串色）"));
-    m_comboMode->addItem(tr("HSV 颜色色块 (向后兼容)"));
-
     m_chkShowTrajectory = new QCheckBox(tr("在画面中显示目标实时运动轨迹"), settingsTab);
     m_chkShowTrajectory->setChecked(true);
-    m_chkShowMask = new QCheckBox(tr("在画面中显示处理掩膜 / 轮廓边缘"), settingsTab);
     m_chkEnhance = new QCheckBox(tr("画面清晰度增强（去灰 / 轻锐化）"), settingsTab);
     m_chkEnhance->setChecked(true);
 
@@ -557,36 +563,20 @@ QWidget *MainWindow::buildMonitorDashboard()
     form->addRow(tr("倾倒判定门限"), m_spinToppleThresh);
     form->addRow(tr("尺寸突变门限"), m_spinScaleThresh);
     form->addRow(tr("位移偏离门限"), m_spinDispThresh);
-    form->addRow(tr("最小目标面积"), m_spinMinArea);
-    form->addRow(tr("检测算法模式"), m_comboMode);
     setLayout->addLayout(form);
     setLayout->addWidget(m_chkShowTrajectory);
-    setLayout->addWidget(m_chkShowMask);
     setLayout->addWidget(m_chkEnhance);
     setLayout->addStretch();
 
-    tabs->addTab(settingsTab, tr("参数设置"));
+    pages->addWidget(settingsTab);
 
     connect(m_spinTiltThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
     connect(m_spinToppleThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
     connect(m_spinScaleThresh, &QSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
     connect(m_spinDispThresh, &QDoubleSpinBox::valueChanged, this, &MainWindow::applyMonitorThresholds);
-    connect(m_spinMinArea, &QSpinBox::valueChanged, this, [this](int area) {
-        for (auto &c : m_channels) {
-            c.autoParams.minArea = area;
-            c.channel->setAutoParams(c.autoParams);
-        }
-    });
-    connect(m_comboMode, &QComboBox::currentIndexChanged, this, &MainWindow::applyDetectorMode);
     connect(m_chkShowTrajectory, &QCheckBox::toggled, this, [this](bool show) {
         for (auto &c : m_channels) {
             c.video->setShowTrajectory(show);
-        }
-    });
-    connect(m_chkShowMask, &QCheckBox::toggled, this, [this](bool show) {
-        for (auto &c : m_channels) {
-            c.channel->setShowMask(show);
-            c.video->setShowMask(show);
         }
     });
     connect(m_chkEnhance, &QCheckBox::toggled, this, [this](bool enable) {
@@ -743,7 +733,7 @@ void MainWindow::broadcastTargetSignature(int sourceIndex, const TargetSignature
 
 void MainWindow::applyMonitorThresholds()
 {
-    m_thresholds.tiltThresh = m_spinTiltThresh ? m_spinTiltThresh->value() : 8.0;
+    m_thresholds.tiltThresh = m_spinTiltThresh ? m_spinTiltThresh->value() : 12.0;
     m_thresholds.toppleThresh = m_spinToppleThresh ? m_spinToppleThresh->value() : 35.0;
     m_thresholds.scaleThresh = m_spinScaleThresh ? (m_spinScaleThresh->value() / 100.0) : 0.15;
     m_thresholds.dispThresh = m_spinDispThresh ? m_spinDispThresh->value() : 15.0;
@@ -751,22 +741,6 @@ void MainWindow::applyMonitorThresholds()
     for (auto &c : m_channels) {
         c.channel->setThresholds(m_thresholds);
     }
-}
-
-void MainWindow::applyDetectorMode(int modeIndex)
-{
-    for (auto &c : m_channels) {
-        c.channel->setDetectorMode(modeIndex);
-        c.channel->clearTarget();
-        c.baselineSet = false;
-        c.hasTarget = false;
-        c.trackingActive = false;
-        c.lastAnomaly = {};
-        c.lastTargetStatus = {};
-    }
-    m_lastTargetStateSignature.clear();
-    updateFusionDecision();
-    appendLog(tr("切换检测模式为：%1").arg(m_comboMode->currentText()));
 }
 
 void MainWindow::updateFusionDecision()
@@ -1325,10 +1299,9 @@ void MainWindow::openChannel(int index, const QUrl &url)
     ui.unavailableReason.clear();
     ui.connectButton->setText(tr("断开"));
     ui.channel->setParams(ui.params);
-    if (m_spinMinArea) ui.autoParams.minArea = m_spinMinArea->value();
     ui.channel->setAutoParams(ui.autoParams);
-    ui.channel->setDetectorMode(m_comboMode ? m_comboMode->currentIndex() : 0);
-    ui.channel->setShowMask(m_chkShowMask ? m_chkShowMask->isChecked() : false);
+    ui.channel->setDetectorMode(ChannelWorker::AutoContour);
+    ui.channel->setShowMask(false);
     ui.channel->setImageEnhance(m_chkEnhance ? m_chkEnhance->isChecked() : false);
     ui.channel->setThresholds(m_thresholds);
     ui.channel->open(selectedUrl);

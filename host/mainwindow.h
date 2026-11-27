@@ -83,7 +83,6 @@ private:
     void clearAllTargets();
     void broadcastTargetSignature(int sourceIndex, const TargetSignature &sig);
     void applyMonitorThresholds();
-    void applyDetectorMode(int modeIndex);
     void updateFusionDecision();
     void appendLog(const QString &text);
     void exportEventLog();
@@ -106,9 +105,6 @@ private:
     QDoubleSpinBox *m_spinToppleThresh = nullptr;
     QSpinBox *m_spinScaleThresh = nullptr;
     QDoubleSpinBox *m_spinDispThresh = nullptr;
-    QSpinBox *m_spinMinArea = nullptr;
-    QComboBox *m_comboMode = nullptr;
-    QCheckBox *m_chkShowMask = nullptr;
     QCheckBox *m_chkShowTrajectory = nullptr;
     QCheckBox *m_chkEnhance = nullptr;
 
