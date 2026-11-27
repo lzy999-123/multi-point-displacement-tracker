@@ -6,13 +6,9 @@ build*/
 # 本地配置（WiFi 账号等）
 esp32cam/**/secrets.h
 host/camera-runtime.ini
-# 本机编译固件和 Flash 备份含 WiFi 配置，保留在本地。
-output/**/*.bin
 
-# STM32 编译产物
-stm32/**/MDK-ARM/*/
-stm32/**/Debug/
-stm32/**/Release/
+# Office 临时锁文件
+~$*
 
 # 数据与临时文件
 data/

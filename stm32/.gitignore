@@ -1,4 +1,0 @@
-# Local Keil debug/session settings. Build output is ignored by the root rules.
-MDK-ARM/DebugConfig/
-*.uvoptx
-*.uvguix.*

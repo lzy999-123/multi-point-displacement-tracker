@@ -1,120 +1,43 @@
-> 当前基线（2026-11-27）：`adaptive-udp-v26`（普通 ESP32-D0WD-V3 + OV3660，24 MHz XCLK + 配套 PLL 乘数 25 / PCLK 分频 10）。在 `v25` 基础上优化了 OV3660 零延迟硬件 ISP 成像参数（`brightness=0, contrast=1, saturation=0, sharpness=2, denoise=1, lenc=1, bpc=1, wpc=1`，保持满速 27.7 fps 原生采集），默认 640×480 档位锁定 `q=30`（`target=15000 B`、`50 ms` 底限），并支持上位机通过 `VREQ02` 实时调整硬件 JPEG 质量（30 / 24 / 20 / 16 / 自动 18～42）。三块板构建时分别使用 `build.ps1 -Board ESP32Cam -Framework 3.3.12 -DeviceId 1/2/3`；下方保留早期板型与迭代说明作历史参考。
+# ESP32-CAM 无线图传固件
 
-# ESP32-CAM 固件
+当前主线固件为 `adaptive-udp-v26`，运行于 3 台普通 **ESP32-CAM（ESP32-D0WD-V3 + OV3660，4MB Flash / 4MB PSRAM）**，经 2.4 GHz Wi-Fi 通过自定义 UDP 协议（VID1，端口 `5006`）向 Qt 上位机持续推流。
 
-2026-11-15 双档 UDP 固件 `dual-profile-udp-v16`：同一固件运行时切换
-640×480 / 目标 12fps 与 320×240 / 目标 25fps，无需再次烧录。
-上位机使用 VREQA3 配置档位与代次；只有采集任务调用传感器设置，丢弃切换期帧并校验 JPEG SOF 尺寸后才回 VCFG。
-两档均使用原生硬件 JPEG 和自适应压缩，分辨率不由上位机缩放伪造。
-当前 USB 映射经本次核对为 ID1=COM5、ID2=COM3、ID3=COM11；编号以设备 MAC 和启动日志为准。
-详见 `output/双档UDP切换-20261115/` 的实测报告；目标帧率不代表已通过稳定性验收。
+## 核心特性（`adaptive-udp-v26`）
 
+- **传感器与画质优化**：24 MHz XCLK + 配套 PLL 乘数 25 / PCLK 分频 10，原生满速采集约 **27.7 fps**；优化 OV3660 零延迟硬件 ISP 参数（`brightness=0, contrast=1, saturation=0, sharpness=2, denoise=1, lenc=1, bpc=1, wpc=1`），消除原厂默认发灰雾感。
+- **动态分辨率与质量切换**：上位机通过 `VREQA3` 实时切换 `320×240` / `640×480`（默认）/ `800×600` 原生硬件 JPEG 档位，并通过 `VREQ02` 实时调整硬件 JPEG 质量（锁定 `30 / 24 / 20 / 16` 或自动 `18～42`，默认 `640×480` 锁定 `q=30`），切换完成后校验 JPEG SOF 尺寸并回发 `VCFG`。
+- **三机共享热点抗拥塞**：针对 3 台设备共用 2.4 GHz 手机热点，内置分档平滑节拍底限、8 槽 PSRAM 帧队列、机位相位错峰（`DEVICE_ID * 12 ms`）、`ENOMEM` AIMD 自适应退让与首片拥塞早退机制。
+- **固定机位编号与自动发现**：通过 `DEVICE_ID`（1～3）与上位机画面框 1～3 严格绑定，支持 UDP 广播发现与上位机热插拔重连，不依赖 USB COM 口顺序。
 
-历史记录（2026-11-12）：三台均为普通 ESP32-D0WD-V3＋OV3660，4MB Flash / 4MB PSRAM，分别为 COM3、COM5、COM11（ID 1/2/3）。当前运行 vga-feedback-v9，使用 Arduino-ESP32 3.3.12、手机热点 STA、原生 640×480、硬件 JPEG 质量 18。默认发送间隔 45ms，支持 VREQA/VACK 一至两帧的自适应反馈窗口，整帧重试预算 80ms、反馈等待期限 150ms；分片间隔按拥塞及帧大小调整，连续失败后的冷却等待为 50/100/150ms。发送上限不代表实际稳定帧率；实机仍存在无线停顿，尚未通过严格稳定 20/25fps。当前修改、三档对照和恢复资料见 [优化记录](../output/图传优化-20261112-v9/优化与实测.md)。此前完整备份与旧版本记录保留在 [三路实测](../output/三路ESP32CAM实测-20261112/实测记录.md)。
+## 目录结构
 
-串口诊断字符 `2` / `5` / `0` 分别临时设置 45ms（约22.22fps）、40ms（25fps）及无主动帧间上限；复位恢复源码默认值。最后一种模式仍受采集、整帧预算及接收反馈限制。正式上位机会占用串口，独立诊断工具应先正常关闭上位机；多个视频接收器会争抢相机的单一推流目的地址。
+- `displacement_cam/displacement_cam.ino`：主固件入口（采集任务、UDP 推流、设备发现与控制命令处理）
+- `displacement_cam/config.h`：设备编号（`DEVICE_ID`）、端口与无线参数配置
+- `displacement_cam/camera_pins.h`：板级摄像头引脚映射（AI-Thinker ESP32-CAM / 兼容旧 ESP32-S3）
+- `displacement_cam/udp_video_profile.h`：分辨率与 JPEG 质量档位定义
+- `displacement_cam/udp_send_policy.h`：AIMD 拥塞控制与帧发送预算策略
+- `displacement_cam/secrets.example.h`：Wi-Fi SSID 与密码模板
+- `build.ps1`：固件编译与烧录脚本
 
-为每块板单独构建时，使用 `build.ps1 -Board ESP32Cam -Framework 3.3.12 -DeviceId 1`（另两块分别用 2、3）；不要把同一个 ID 的 BIN 烧给三块板。以下为历史板型、网络和分辨率记录。
+## 编译与烧录
 
-历史记录（2026-11-11 S3接回）：旧ESP32-S3＋GC2145已识别为COM6，已完成整片备份校验，当前运行隔离构建的3.3.12快速HTTP编码版本，通过实验室DH4504向Qt传图；完整稳定性验收仍失败。该S3构建与下方默认OV3660源码/旧2.0.17构建不同，不要混刷，源码及BIN冻结位置见 [S3恢复与实测](../output/实验室网络实测-20261111/S3接回恢复与实测.md)。
+工具链安装在 `D:\esp32`（Arduino-ESP32 `3.3.12`，FQBN：`esp32:esp32:esp32cam:FlashMode=dio,FlashFreq=40`）。
 
-历史记录：2026-11-11 本机 COM5 已烧录实验室 STA 固件，连接 `DH4504`，IP 为 `192.168.110.96`。实验室稳定传图尚未通过，见 [本轮实测](../output/实验室网络实测-20261111/实测记录.md)。下文纯 AP 默认模式及通过数据属于此前直连配置。
-
-## 当前新板：普通 ESP32-CAM + OV3660（2026-11-09）
-
-USB/COM5 已识别为 ESP32-D0WD-V3 rev3.1、4MB Flash，原厂启动标识 ESP32-CAM-MB。
-普通 ESP32 自动选择 AI-Thinker 摄像头引脚、20MHz XCLK 和硬件 JPEG；不使用 S3 专用寄存器或软件编码库。
-本机使用已安装的 Arduino-ESP32 3.3.12，320×240、JPEG quality=20，当前默认纯 AP 模式。
-热点为 `disp-cam-1`，信道1、20MHz带宽、相机IP `192.168.4.1`。密码由本地 `secrets.h` 配置。
-Qt 默认使用 UDP 5006，HTTP 81 保留兼容。帧内分片有2ms间隔和有限重试；整帧发送预算 350ms（`CAM_UDP_FRAME_BUDGET_MS`，低于上位机 500ms 组帧槽寿命），已开始发送的帧尽量发完，超过预算才放弃。旧 80ms 预算在慢链路下会让每帧只发出几个分片就被丢弃，空口被残缺帧占满、完整帧归零。VNCK 补包请求先登记，排空同批 VACK 且整帧发完 15ms 后再补发，避免重复发送仍在队列中的分片。
-OV3660 的亮度、饱和度和垂直翻转参考本机官方 CameraWebServer 示例；实物方向仍需观察确认。
+1. 将 `displacement_cam/secrets.example.h` 复制为 `displacement_cam/secrets.h` 并填写 2.4 GHz Wi-Fi 名称与密码（该文件已被 `.gitignore` 忽略）。
+2. 为三块板分别传入 `-DeviceId 1` / `2` / `3` 编译并烧录（切勿把同一 `DEVICE_ID` 的固件烧给多块板）：
 
 ```powershell
-# 新板：编译 / 编译并烧录
-.\esp32cam\build.ps1
-.\esp32cam\build.ps1 -Flash -Port COM5
-# 旧 S3 板：保持隔离的 2.0.17 工具链
-.\esp32cam\build.ps1 -Board S3
+# 仅编译（示例：设备 1）
+.\esp32cam\build.ps1 -Board ESP32Cam -Framework 3.3.12 -DeviceId 1
+
+# 编译并烧录到指定串口（烧录前先关闭串口监视器与占用串口的程序）
+.\esp32cam\build.ps1 -Board ESP32Cam -Framework 3.3.12 -DeviceId 1 -Flash -Port COM5
 ```
 
-新板输出：`D:\esp32\build-out\displacement-cam-ov3660-3.3.12\bin`。
-最新真实 Qt 自动启动130秒测试已通过，预热10秒后逐秒最低25帧、最长画面间隔110ms。
-正式程序自行管理 COM5 和 WLAN，会在退出时释放串口并恢复启动前的WiFi；使用 `host/run.cmd`。
-详见 [最新修复与验收](../docs/Qt画面流畅性修复与实测-2026-11-09.md)。
-较早 HTTP 测试的740ms停顿属于历史对照，保留于 [旧记录](../docs/OV3660实机优化-2026-11-09.md)。
-FQBN：`esp32:esp32:esp32cam:FlashMode=dio,FlashFreq=40`。
-新板引导程序写入 `0x1000`、Flash 为 4MB；旧 S3 引导程序为 `0x0`、Flash 为 8MB，不能混用。
-`build-info.json` 记录构建版本与源码/BIN 哈希，不记录 WiFi 密码。
-`secrets.h` 保留本地 WiFi 设置；切回路由器组网需将 `CAM_WIFI_MODE_AP=0` 后重新烧录。
-三台相机并发不能使用当前三个独立热点作为同一张WiFi网络，须另行验收共享路由器链路。
+> 产物默认输出到 `D:\esp32\build-out\displacement-cam-ov3660-3.3.12\bin`（使用纯 ASCII 路径避免链接器中文路径问题），同级 `build-info.json` 记录构建版本与源码/BIN 的 SHA256（不含 Wi-Fi 密码）。若需兼容早期 ESP32-S3 测试板，可使用 `.\esp32cam\build.ps1 -Board S3`。
 
-以下 GC2145 性能数据和 S3 工具链说明为旧板记录，不代表新 OV3660 实测结果。
+## 使用注意
 
-阶段 1 功能：连接 WiFi、HTTP MJPEG 推流（`http://IP:81/stream`）、响应上位机的 UDP 设备发现。
-控制通道和串口转发在阶段 2 加入。
-
-2026-11-06 已在真实 ESP32-S3 + GC2145 上编译、烧录并收到 320×240 图像，但板端约 14.8fps 的采集速率没有转化为流畅传输；35秒仅收到11张完整图像，仍未通过视频流畅性验收。详见 [单机实测记录](../docs/ESP32单机实测-2026-11-06.md)。
-
-此前 GC2145 目标为**无线320×240 @20fps**，不以USB或160×120代替验收。
-源码已采用YUV422输入、优化软件JPEG编码器、双缓冲和40ms采集间隔，保留标准MJPEG与最新帧覆盖。
-工具链固定为隔离安装的 Arduino-ESP32 **2.0.17**；发送等待改为1000ms，给TCP重传保留时间，减少过早断开。
-实板采集约25fps、压缩约17ms，但无线20fps目标仍未通过，不能把采集速率或单个流畅区间当成完成证明。
-研究依据见 [GitHub调研](../docs/GitHub参考项目调研-2026-11-06.md)，各实机对照见 [优化记录](../docs/ESP32推流优化-2026-11-06.md)。
-
-## 硬件
-
-当前开发板：ESP32-S3（QFN56，8MB PSRAM，8MB Flash）+ GC2145 摄像头，板载 CH340 串口。
-摄像头引脚按乐鑫 ESP32-S3-EYE，已用 `camera_probe/` 实测确认。
-
-GC2145 没有硬件 JPEG，当前固件取YUV422帧后用CPU优化编码器压缩。早期RGB565探测数据（旧编码路径）：
-
-| 分辨率 | 取帧 | 软件 JPEG | 每帧大小 | 帧率 |
-| --- | --- | --- | --- | --- |
-| QVGA 320×240 | 2.9 ms | 64 ms | 约 2.2 KB | 约 15 fps |
-| VGA 640×480 | 8.1 ms | 263 ms | 约 15 KB | 约 3.7 fps |
-
-当前默认QVGA（320×240），双缓冲下实测优化压缩约16.7～17.2ms，连续采集约25fps；40ms采集间隔保留余量。
-正式固件把压缩（核 1）和网络发送（核 0）分开，实际帧率以上板和Qt窗口的完整时段记录为准。
-
-用 AI-Thinker ESP32-CAM（ESP32 + OV2640）时，在 `config.h` 打开 `BOARD_AI_THINKER`，固件会自动使用硬件 JPEG。
-
-## 烧录
-
-工具链装在 `D:\esp32`（见 `D:\esp32\README.md`）。
-
-1. 把 `displacement_cam/secrets.example.h` 复制为 `secrets.h`，填写 WiFi 名称和密码（ESP32 只支持 2.4GHz）。
-   `secrets.h` 已在 `.gitignore` 中忽略。缺少该文件时编译会直接报错提示。
-2. 在 `config.h` 修改 `DEVICE_ID`（三台分别为 1、2、3）。
-3. 使用固定版本脚本编译并上传（本板实测230400可靠）：
-
-```powershell
-# 在项目根目录，只编译：
-.\esp32cam\build.ps1
-# 编译并烧录（先关闭串口监视器和视频客户端）：
-.\esp32cam\build.ps1 -Flash -Port COM5
-```
-
-脚本针对当前S3板，默认构建产物在 `D:\esp32\build-out\displacement-cam-2.0.17\bin`，
-同级 `build-info.json` 保存版本、应用BIN和非秘密源码的SHA256。使用ASCII构建路径以避开旧版链接器的中文路径问题。
-
-本机隔离工具链在 `D:\esp32\compat-2.0.17`，未替换原有3.3.12安装。
-官方2.0.17源码和配套GCC8.4.0压缩包已与乐鑫包索引的SHA256核对。
-脚本要求以下现有文件；换电脑时需要先准备同版本工具链，脚本不会自动下载或静默换版本：
-
-- `arduino-cli.yaml` 指向隔离的 `sketchbook`。
-- `sketchbook/hardware/espressif/esp32` 指向 `core-extract/esp32-2.0.17`。
-- `compiler/xtensa-esp32s3-elf` 为 esp-2021r2-patch5 GCC8.4.0。
-- 原有 `D:\esp32\arduino15\packages\esp32\tools\esptool_py\5.3.1` 与 `D:\esp32\venv\Scripts\python.exe`。
-- 本机官方 `esp32s3-libs/3.3.12` 中的 `libesp_new_jpeg.a` 及配套头文件：仅复用软件编码库，WiFi/相机驱动仍用2.0.17。脚本同时记录编码库SHA256。
-
-本版需要上述额外编码库的链接配置，建议使用已验证脚本；仅在IDE中选择2.0.17不足以完成构建。
-
-4. 串口监视器（115200）会打印 IP、视频地址和每 5 秒的帧率统计。
-
-## 注意
-
-- 供电要稳定的 5V。电源不足时开 WiFi 会掉电重启，串口会出现 `Brownout detector was triggered`。
-- 三台设备的 `DEVICE_ID` 不能重复。上位机发现编号冲突时会提示，并只连接先发现的那台。
-- 视频同一时刻只服务一个客户端，浏览器在看时上位机连不上。
-- GPIO4～13、15～18 被摄像头占用，GPIO35～37 被 PSRAM 占用，阶段 2 接 STM32 串口时不能用这些引脚。
-- 原厂固件的整片备份在 `D:\esp32\backup`，可以随时写回。
+- **独立稳定 5V 供电**：供电不足在开启 Wi-Fi 时会触发 `Brownout detector was triggered` 导致掉电重启；USB 线仅作供电、烧录与可选 115200 波特率诊断日志，正式推流完全走 Wi-Fi。
+- **编号唯一**：三台设备的 `DEVICE_ID`（1～3）不可重复；上位机发现冲突时会提示并仅连接先响应设备。
+- **单客户端推流**：每台设备同一时刻仅向当前请求的上位机推流，排查网络或串口时请先关闭上位机。
